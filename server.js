@@ -34,6 +34,9 @@ const db = knex(dbSettings);
 //app
 const port = 8060;
 const app = express();
+const rootDirectory = path.join(__dirname,"FileSystem");
+
+
 app.set('trust proxy',1);
 app.use(session({
     secret : 'it is as clear as in is on paper',
@@ -119,7 +122,6 @@ app.get('/',(req,res)=>{
     })
 })
 
-//TODO : gmail : '' causes error code 400 to be sent back. Fix this.
 //status code 401 for unautharized
 //status 200, accepted
 //send us a gmail, we send back a session 
@@ -172,8 +174,16 @@ app.get('/account/user',isWhitelisted,(req,res)=>{
 //upload images to database
 app.post('/account/upload',isWhitelisted,upload.any(),(req,res)=>{
     console.log(req.files);
-    res.send
+    
     res.sendStatus(200);
+});
+
+app.get('/accout/file/:fileid',isWhitelisted,(req,res)=>{
+    res.send("here");
+});
+
+app.get('account/metadata',isWhitelisted,(req,res)=>{
+    res.send({"msg" : "Where the problem at?"})
 });
 
 app.listen(port,()=>{
