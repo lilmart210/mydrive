@@ -12,7 +12,8 @@ type ServerType = {
     isAuthenticated : boolean,
     upload : (data : {[name : string] : any})=>Promise<any>,
     address : string,
-    credentials : {[name : string] : any}
+    credentials : {[name : string] : any},
+    dir : (apath : string) => Promise<any>
 }
 
 type MyProvider = {
@@ -20,6 +21,10 @@ type MyProvider = {
 }
 
 function Server() {
+    function cmd(){
+
+    }
+
     const serverurl = 'http://localhost:8060'
     const options = {
         withCredentials : true,
@@ -27,15 +32,15 @@ function Server() {
             return status >=200 && status <= 500;
         }
     }
+
     axios.interceptors.response.use((config)=>{
+        //ignore 404 errors
         cmd.isAuthenticated = config.status == 200 && config.config.url != serverurl + '/logout';
+        cmd.isAuthenticated = cmd.isAuthenticated || config.status == 404;
         
         return config;
     })
 
-    function cmd(){
-
-    }
     cmd.credentials = options;
     cmd.address = serverurl;
     cmd.isAuthenticated = false;
@@ -59,6 +64,10 @@ function Server() {
 
     cmd.login = async (gmail : string = '')=>{
         return axios.post(serverurl + '/login',{gmail : gmail},options);
+    }
+
+    cmd.dir = async (dir : string = '/') =>{
+        return axios.get(serverurl + '/account/list' + dir,options);
     }
 
     return cmd;

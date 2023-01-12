@@ -6,13 +6,14 @@ import './upload.css'
 export function Upload(){
     const [Files,SetFiles] = useState<Array<File>>([]);
     const {Server} = useContext(AxiosContext)
+    const [popup,setPopup] = useState(false);
     
     //make pop up screen
     const UploadHandler = (event : React.MouseEvent<HTMLButtonElement>) => {
         const form = new FormData();
         for(let i = 0; i < Files.length;i++){
             console.log(Files[i].name)
-            form.append('file'+i,Files[i],Files[i].name);  
+            form.append('file'+i,Files[i],Files[i].name);
         }
         Server.upload(
             {
@@ -26,6 +27,7 @@ export function Upload(){
             }
         ).then(()=>{
             console.log("posted");
+            SetFiles([]);
         }).catch(()=>{
             console.log("unsuccessful upload");
         })
@@ -38,7 +40,6 @@ export function Upload(){
             SetFiles([...Files,afilelist[i]]);
         }
         event.currentTarget.value = '';
-        
     }
 
     const ToObject = (arr : File[])=>{
@@ -58,7 +59,23 @@ export function Upload(){
         <div className='UploadPanel'>
             <div className = "FileDisplay">{...ToObject(Files)}</div>
             <input type='file' onChange={FileChange}></input>
-            <button onClick={UploadHandler}>Upload</button>
+            <button onClick={()=>{setPopup(true)}}>Upload</button>
+            <FileExplorer onSubmit = {UploadHandler}></FileExplorer>
         </div>
     </div>
+}
+
+type FileExplorer = {
+    onSubmit : (event : React.MouseEvent<HTMLButtonElement>) => void
+}
+
+export function FileExplorer(props : FileExplorer){
+    const [buildDir,setBuildDir] = useState<string>('/');
+    
+    return (
+        <div className='FileExplorer'>
+            
+            <button onClick={props.onSubmit}>Upload</button>
+        </div>
+    )
 }

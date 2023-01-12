@@ -1,17 +1,20 @@
 
 import Background from '../../assets/HomeBackground.svg';
 import {Outlet,Navigate,useNavigate} from 'react-router-dom'
+import { AxiosContext } from '../Context/ConnectionContext';
+import {useContext,useEffect,useState} from 'react';
+
 import { useAuth0 } from "@auth0/auth0-react";
 import './home.css'
 
 export function Home(){
-    const {loginWithRedirect,isAuthenticated} = useAuth0();
     const nav = useNavigate();
-
-
+    const {Server} = useContext(AxiosContext);
+    
     const NavToProfile = ()=>{
         nav('/profile');
     }
+    
 
     return (
         <div className='HomeLayout'>
@@ -24,10 +27,10 @@ export function Home(){
                 <div className='LeftDirectory Widget'>
                     <button onClick={()=>{nav('/home/upload')}}>Upload</button>
                     <button onClick={()=>{nav('/home')}}>My Drive</button>
-                    <button>Shared</button>
-                    <button>Trash</button>
-                    <button>Secret</button>
-                    <button>Favorite</button>
+                    <button onClick={()=>{nav('/home/Shared')}}>Shared</button>
+                    <button onClick={()=>{nav('/home/Trash')}}>Trash</button>
+                    <button onClick={()=>{nav('/home/Secret')}}>Secret</button>
+                    <button onClick={()=>{nav('/home/Favorite')}}>Favorite</button>
                     <button onClick={()=>{nav('/logout')}}>Logout</button>
                 </div>
                 <div className='LeftArtifact Widget'>
@@ -36,8 +39,7 @@ export function Home(){
                 </div>
             </div>
             <div className='FileDirectory'>
-                {isAuthenticated ? <Outlet/> : <div className='Auth'>
-                    <button onClick = {loginWithRedirect}>Login with auth0</button></div>}
+                <Outlet/>
             </div>
         </div>
     )
