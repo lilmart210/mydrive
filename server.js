@@ -5,123 +5,16 @@ const session = require('express-session');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
-const fsp = require('fs/promises');
 const fs = require('fs');
-const {makeToken,hashCode} = require('./serverFunctions');
-const crypto = require('crypto');
-//{makeToken,hashCode}
-/**
- * The multer middleware goes filter -> destination -> filname
- */
-
-
-
-const rootDirectory = path.join(__dirname,"FileSystem");
-
-//database
-const dbSettings = {
-    client : 'sqlite3',
-    connection : {
-        filename : './database/data.sqlite3'
-    },
-    useNullAsDefault : true,
-};
-
-//files for handling destination
-/**
- * user example : mrmartinwatson.
- * user is the [someperson]@gmail.com
- * of an email address.
- * returns the primary compartment for storing data
- */
-const GetPrimaryDirectory = (gmail) =>{
-    const user = gmail.split('@')[0];
-    const userhash = hashCode(gmail).toString()
-    const apath = path.join(rootDirectory,user + userhash);
-    return apath;
-}
-function HasPrimaryDirectory(gmail){
-    const apath = GetPrimaryDirectory(gmail);
-    return fs.existsSync(apath);
-}
-
-function createUserDirectory(gmail){
-    //create file system
-    //add files to data base
-    const userDir = GetPrimaryDirectory(gmail);
-    fs.mkdirSync(userDir,{recursive : true});
-}
-function listDirectory(dir){
-    let ret = fs.readdirSync(dir);
-    return ret;
-}
-//middleware for storing files
-/**
- * if the destination doesn't eists, create it
- * filter -> destination -> filname
- * 
- * Filename Goal :
- * Check if file exists, if it exists, rename it
- * Destination goal : 
- * return the path found from filter
- */
-const storage = multer.diskStorage({
-    destination : function(req,file,cb){
-        //storage name is the name i gave it
-        //console.log("destination",file.StorageName);
-        cb(null,file.StorageDir);
-        
-    },
-    filename : function(req,file,cb){
-        //const extname = path.extname(file.originalname);
-        //console.log("filename");
-        cb(null,file.StorageName)
-    }
-});
-/**
- * Refuse Duplicate files that have the same content
- * Duplicate File names that are not the same, the newest one gets renamed
- * filter -> destination -> filname
- * will make sure the user directory exists
- * creates root path. Won't create path from request
- * 
- * Goal : Refuse Paths that do not exists
- */
-const StorageFilter = function(req,file,cb){
-    const gmail = req.session.user;
-    const userdir = GetPrimaryDirectory(gmail);
-    const filename = file.originalname;
-
-    //see if root path exists. If it doesn't create it
-    //const dirExists = fs.accessSync(userdir);
-    const dirExists = fs.existsSync(userdir);
-    if(!dirExists){
-        //create the directory
-        createUserDirectory(gmail);
-    }
-    //check to see if the directory has file
-    const knownNames = listDirectory(userdir);
-    const collision = knownNames.indexOf(filename) != -1;
-    let FinalName = filename;
-    if(collision){
-        //todo check if the file is exactly the same
-        const ext = path.extname(FinalName);
-        const base = path.filename(FinalName);
-        FinalName = base + Date.now().toString() + ext;
-    }
-    file.StorageName = FinalName;
-    file.StorageDir = userdir;
-
-    cb(null,true);
-}
-
-const upload = multer({storage : storage,fileFilter : StorageFilter});
-
+const sharp = require('sharp');
 
 /**
- * @type {knex.Knex}
+ * @type {fs.promises}
  */
-const db = knex(dbSettings);
+const fsp = require('node:fs/promises');
+const {db,isWhitelisted,UniqueToken,rootDirectory,startup} = require('./DatabaseFunctions');
+const {upload,listDirectory,createUserDirectory,HasPrimaryDirectory,GetPrimaryDirectory} = require('./DirectoryMiddleware');
+
 //app
 const port = 8060;
 const app = express();
@@ -129,7 +22,7 @@ const app = express();
 
 app.set('trust proxy',1);
 app.use(session({
-    secret : 'it is as clear as in is on paper',
+    secret : 'it is as clear as ink is on paper',
     resave: false,
     saveUninitialized: true
 }));
@@ -141,53 +34,9 @@ app.use(cors({
 }));
 
 app.use(express.json());
-const passcode = 'admin';
 
 
 
-//create white listed users
-const startup = async ()=>{
-    await db.schema.createTable('whitelist',function (table){
-    table.increments();
-    table.string('gmail');
-    table.string('token');
-    }).then(()=>{console.log('whitelist created')});
-
-    await db('whitelist').insert([{gmail : 'mrmartinwatson@gmail.com'},{gmail : 'mrmarcuswatson@gmail.com'}]).then(()=>{
-        console.log('names inserte');
-    })
-}
-
-//generates unique tokens for each user
-const UniqueToken = async ()=>{
-    const idlist = await db('whitelist').select('id').then(data => data);
-    idlist.map(async (item)=>{
-        await db('whitelist').where('id','=',item.id).update({'token' : makeToken()})
-    })
-}
-
-//UniqueToken();
-
-//create if not table not exists
-db.schema.hasTable('whitelist').then((exists)=>{
-    if(!exists)startup();
-    //make a new token for every user
-    //db('whitelist').update({'token' : makeToken()}).then(()=>{console.log('token refreshed')});
-});
-
-
-//authentication middleware
-const isWhitelisted  = async (req,res,next)=>{
-    //check authentication
-    if(req.session && req.session.SessionToken){
-        //if authenticated, go ahead
-        next()
-    }else {
-        //not authenticated
-        res.sendStatus(401)
-    }
-
-}
 
 //home page
 app.get('/',(req,res)=>{
@@ -220,16 +69,17 @@ app.post('/login',async (req,res)=>{
         .then(data => data.length == 1);
         
         if(token || hasToken){
+            const agmail = token ? token.gmail : req.session.user
             //check if dir exists, if not create it
-            if(!HasPrimaryDirectory(gmail)){
-                createUserDirectory(gmail);
+            if(!HasPrimaryDirectory(agmail)){
+                createUserDirectory(agmail);
             }
         }
 
         //found and send
         if(token){
             req.session.SessionToken = token.token;
-            req.session.user = gmail;
+            req.session.user = token.gmail;
             res.sendStatus(200);
         }else if(hasToken){
             res.sendStatus(200);
@@ -264,17 +114,109 @@ app.post('/account/upload',isWhitelisted,upload.any(),(req,res)=>{
     
     res.sendStatus(200);
 });
-//gets the fild fileid is the path to the file from main file store
-app.get('/accout/file/:fileid',isWhitelisted,(req,res)=>{
-    res.send("here");
+//create a folder at given directory if dir already exists 
+app.post('/account/upload/create',isWhitelisted,(req,res)=>{
+    //where is the prefix for this coming from?
+    const basedir = GetPrimaryDirectory(req.session.user);
+    const dirname = path.join(basedir,req.body.dirname);
+    const adir = req.body.path;
+    console.log(adir,dirname);
+    fsp.exists(dirname).then((found)=>{
+        return found && res.sendStatus(400) ||
+        !found && fsp.mkdir(path.join(dirname,adir))
+        .then(()=>{res.sendStatus(201)})
+        .catch(()=>{res.sendStatus(500)})
+    }).catch(()=>res.send(500));
 });
 
+app.post('/account/image',isWhitelisted,async(req,res)=>{
+    const aname = req.body.name;
+    const adir = req.body.path;
+    //do we want it full quality or not
+    //preview = min,full 
+    const prev = req.body.compression; 
+    const basedir = GetPrimaryDirectory(req.session.user);
+    const filepath = path.join(basedir,adir,aname);
+    //const exists = fs.existsSync(path.join(basedir,"hw4.png"));
+    //const exists = fs.existsSync(filepath);
+    const rimg = new RegExp(/\.((png)|(gif)|(jpeg))/,'i');
+    const rvideo = new RegExp(/\.((mp4)|(mov)|(wmv)|(webm))/,'i');
+    const raudio = new RegExp(/\.((ogg)|(mp3))/,'i');
+
+    const isphoto = rimg.test(filepath);
+    const isVideo = rvideo.test(filepath);
+    const isAudio = raudio.test(filepath);
+    
+    if(isphoto && prev == 'full'){
+        sharp(filepath)
+        .png()
+        .jpeg()
+        .gif()
+        .toBuffer()
+        .then(buf =>res.send(buf));
+    }
+    else if(isphoto && prev == 'min'){
+        sharp(filepath)
+        .resize(100,100,{fit : 'contain',withoutEnlargement : true})
+        .png({progressive : true, force : false,compressionLevel :0})
+        .jpeg({progressive : true, force : false, quality : 100})
+        .gif({progressive : true, force : false, quality : 100})
+        .toBuffer()
+        .then((buf)=>{
+            res.send(buf)
+            //console.log(buf);
+        }).catch(()=>{
+            console.log("no good",filepath);
+        })
+    }else{
+        res.sendStatus(200);
+    }
+
+})
+
+//create folders
+app.post('/create/dir',isWhitelisted,(req,res)=>{
+    const primdir = GetPrimaryDirectory(req.session.user);
+    const apath = req.body.path;
+    const dirname = req.body.name;
+    const newdir = path.join(primdir,apath,dirname);
+    const pathexists = fs.existsSync(newdir);
+
+    if(pathexists) {
+        //path aleady exists
+        res.sendStatus(200);
+    }else {
+        fs.mkdir(newdir,()=>{
+            res.sendStatus(200);
+        },(e)=>{
+            res.sendStatus(401);
+        })
+    }
+})
+
 //send back the main directory
-app.get('/account/list',isWhitelisted,(req,res)=>{
+app.post('/account/list',isWhitelisted,(req,res)=>{
+    //req.params.path
     //listDirectory,getprimarydir
     const primdir = GetPrimaryDirectory(req.session.user);
-    const adir = listDirectory(primdir);
-    res.send(adir);
+    const dirpath = path.join(primdir,req.body.path);
+    fsp.readdir(dirpath,{withFileTypes : true})
+    .then((data)=>{
+        
+        const alldirs = data.filter(item => item.isDirectory());
+        const allfiles = data.filter(item =>!item.isDirectory());
+        const filesStats = allfiles.map((item)=>{
+            const stats = fs.statSync(path.join(dirpath,item.name));
+            return {
+                name : item.name,
+                ...stats
+            }
+        })
+        res.send({"directories" : alldirs,"files" : filesStats});
+    })
+    .catch(()=>{
+        res.sendStatus(400);
+    })
 });
 
 app.get('/account/listsecret',isWhitelisted,(req,res)=>{
@@ -284,7 +226,7 @@ app.get('/account/listsecret',isWhitelisted,(req,res)=>{
 //directory is always defined
 app.get('/account/list/:directory',isWhitelisted,(req,res)=>{
     const adir = req.params.directory;
-    console.log(adir,adir == 'undefined',adir =='null',typeof adir);
+    //console.log(adir,adir == 'undefined',adir =='null',typeof adir);
     
     res.send({"files" : [],"directories" : []});
 })

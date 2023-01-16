@@ -5,7 +5,7 @@ import { AxiosContext } from '../Context/ConnectionContext';
 import {useContext,useEffect,useState} from 'react';
 
 import { useAuth0 } from "@auth0/auth0-react";
-import './home.css'
+//import './home.css'
 
 export function Home(){
     const nav = useNavigate();

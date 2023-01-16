@@ -8,7 +8,7 @@ import {Outlet,Navigate,useNavigate} from 'react-router-dom';
 import axios from 'axios';
 import { AxiosContext } from '../Context/ConnectionContext';
 
-import './login.css';
+//import './login.css';
 
 //gmail must be present in body even if just checking authentication
 export function Login(props? : {[setAuth : string] : (abool : boolean)=>void}) {
