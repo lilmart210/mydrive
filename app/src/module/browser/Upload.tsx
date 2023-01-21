@@ -19,27 +19,18 @@ export function Upload(){
             //console.log(Files[i].name)
             form.append('file'+i,Files[i],Files[i].name);
         }
-        Server.upload(
-            {
-                method: 'post',
-                url : Server.address + '/account/upload',
-                data : form,
-                headers : {
-                    'Content-Type': `multipart/form-data; boundary=----arbitrary boundary`
-                },
-                ...Server.credentials
-            }
-        ).then(()=>{
+        Server.upload(form)
+        .then(()=>{
             console.log("posted");
             SetFiles([]);
         }).catch(()=>{
             console.log("unsuccessful upload");
-        })
+        });
 
     }
     const FileChange = (event : React.ChangeEvent<HTMLInputElement>)=>{
         const afilelist = event.target.files
-        if(!afilelist)return;
+        if(!afilelist) return;
         for(let i = 0; i < afilelist?.length;i++){
             SetFiles([...Files,afilelist[i]]);
         }

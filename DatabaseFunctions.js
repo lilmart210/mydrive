@@ -1,12 +1,8 @@
-
-
 const path = require('path');
-const knex = require('knex')
+const knex = require('knex');
+const fs = require('fs');
 
 const {makeToken,hashCode} = require('./serverFunctions');
-
-const rootDirectory = path.join(__dirname,"FileSystem");
-const passcode = 'admin';
 
 //database
 const dbSettings = {
@@ -17,36 +13,40 @@ const dbSettings = {
     useNullAsDefault : true,
 };
 
-
 /**
  * @type {knex.Knex}
  */
 const db = knex(dbSettings);
 
-
-
-//create white listed users
-const startup = async ()=>{
-    await db.schema.createTable('whitelist',function (table){
-    table.increments();
-    table.string('gmail');
-    table.string('token');
-    }).then(()=>{console.log('whitelist created')});
-
-    await db('whitelist').insert([{gmail : 'mrmartinwatson@gmail.com'},{gmail : 'mrmarcuswatson@gmail.com'}]).then(()=>{
-        console.log('names inserte');
+/*
+* Grabs the Initial directory that the file system points at. 
+* Located in TABLE root COLUMN dir
+*/
+async function InitMainDirectory(){
+    const prm = db.schema
+    .hasTable('root')
+    .then(async (exists)=>{
+        if(exists){
+            const dobj = await db('root').select('dir').then();
+            return dobj[0].dir;
+        }else {
+            await db.schema.createTable('root',(table)=>{
+                table.string('dir');
+            }).then()
+            await db('root').select('dir').insert({dir: path.join(__dirname,"FileSystem")}).then();
+            return path.join(__dirname,"FileSystem");
+        }
     })
+    const apath = await prm;
+    const pathExists = fs.existsSync(apath);
+    if(!pathExists){
+        fs.mkdirSync(apath,{recursive : true});
+    }
+    return apath;
 }
 
-//generates unique tokens for each user
-const UniqueToken = async ()=>{
-    const idlist = await db('whitelist').select('id').then(data => data);
-    idlist.map(async (item)=>{
-        await db('whitelist').where('id','=',item.id).update({'token' : makeToken()})
-    })
-}
-
-//UniqueToken();
+//await the root directory to get value
+const rootDirectory = InitMainDirectory();
 
 //authentication middleware
 const isWhitelisted  = async (req,res,next)=>{
@@ -58,22 +58,27 @@ const isWhitelisted  = async (req,res,next)=>{
         //not authenticated
         res.sendStatus(401)
     }
-
 }
 
-//create if not table not exists
-db.schema.hasTable('whitelist').then((exists)=>{
-    if(!exists)startup();
-    //make a new token for every user
-    //db('whitelist').update({'token' : makeToken()}).then(()=>{console.log('token refreshed')});
-});
-
-
+const isAdmin = async (req,res,next)=>{
+    db('whitelist')
+    .select('gmail','admin')
+    .where({gmail : req.session.user})
+    .then((rows)=>{
+        //should only be a single gmail
+        const user = rows[0];
+        user.admin ? next() : res.sendStatus(401);
+    })
+    .catch((e)=>{
+        console.error(e);
+        res.sendStatus(500);
+    })
+}
 
 module.exports = {
     db,
     isWhitelisted,
-    UniqueToken,
     rootDirectory,
-    startup
+    isAdmin,
+    InitMainDirectory
 }

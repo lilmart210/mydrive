@@ -223,10 +223,7 @@
   vertical-align: start;
 }
 
-.Item{
-  border-top: 1px solid grey;
-  border-bottom: 1px solid grey;
-}
+
 .Item:hover{
   border : 2px solid white;
 }
@@ -236,6 +233,9 @@
 .Directory {
   display: flex;
   height : 40px;
+  
+  border-top: 1px solid grey;
+  border-bottom: 1px solid grey;
 }
 
 .Directory::before{
@@ -263,8 +263,14 @@
   justify-content: center;
   align-items: center;
   background-color: rgba(0, 0, 0, 0.433);
+  object-fit: contain;
 }
 
+.DisplayContent:has(.Item) .Item{
+  width : 50vw;
+  height : 50vh;
+  object-fit: contain;
+}
 
 .DisplayImage {
   object-fit: contain;
@@ -319,4 +325,12 @@
   width : 100px;
   height : 100px;
   background: url('../assets/load.svg');
+}
+
+.Expand {
+  width : 80%;
+  height : 80%;
+}
+.NoHover:hover{
+  border: none;
 }

@@ -1,43 +1,82 @@
 const multer = require('multer');
 const path = require('path');
-const fsp = require('fs/promises');
 const fs = require('fs');
 
 const {makeToken,hashCode} = require('./serverFunctions');
 
 const {rootDirectory} = require('./DatabaseFunctions');
+const {db} = require('./DatabaseFunctions');
 
-//{makeToken,hashCode}
 /**
  * The multer middleware goes filter -> destination -> filname
  */
 
 
-//files for handling destination
 /**
  * user example : mrmartinwatson.
  * user is the [someperson]@gmail.com
  * of an email address.
+ * ensures a drive is available
  * returns the primary compartment for storing data
  */
+const GetPrimaryDirectory = async (gmail) =>{
+    //table must have
+    //favorite,secretfavorite,shared
+    //secretshared,drives,maindrive
+    //secretedrive,trashdrive
+    let adrivepath =
 
-const GetPrimaryDirectory = (gmail) =>{
-    const user = gmail.split('@')[0];
-    const userhash = hashCode(gmail).toString()
-    const apath = path.join(rootDirectory,user + userhash);
-    return apath;
+    db('whitelist')
+    .where({gmail : gmail})
+    .select('maindrive')
+    .then((drive)=>drive[0].maindrive);
+
+    return adrivepath;
 }
-function HasPrimaryDirectory(gmail){
-    const apath = GetPrimaryDirectory(gmail);
+
+//check if primary directory exists. Syncronous
+async function HasPrimaryDirectory(gmail){
+    const apath = await GetPrimaryDirectory(gmail);
     return fs.existsSync(apath);
 }
 
-function createUserDirectory(gmail){
-    //create file system
-    //add files to data base
-    const userDir = GetPrimaryDirectory(gmail);
-    fs.mkdirSync(userDir,{recursive : true});
+//creates the user directory
+async function createUserDirectory(gmail){
+    const user = gmail.split('@')[0];
+    const userhash = hashCode(gmail).toString();
+    const apath = path.join(await rootDirectory,user + userhash);
+    
+    await db('whitelist')
+    .where({gmail : gmail})
+    .select('maindrive')
+    .update({maindrive : apath})
+    .then(()=>{});
+
+    fs.mkdirSync(apath,{recursive : true},()=>{});
+
+    return true;
 }
+
+async function getRequestDirectory(req){
+    //if request has specifified drive, switch over
+    const dir = GetPrimaryDirectory(req.session.user)
+    .then(abasedir=>{
+        const dirname = path.join(abasedir,req.body.path);
+        return dirname;
+    })
+    return dir;
+}
+
+async function GetRequestFilePath(req){
+    const dir = getRequestDirectory(req)
+    .then(apath=>{
+        const dirname = path.join(apath,req.body.name);
+        return dirname;
+    })
+    return dir;
+}
+
+
 function listDirectory(dir){
     let ret = fs.readdirSync(dir,{withFileTypes : true});
     return ret;
@@ -79,35 +118,35 @@ const storage = multer.diskStorage({
  * 
  * Goal : Refuse Paths that do not exists
  */
-const StorageFilter = function(req,file,cb){
-    //don't upload if we don't have a directory
-    if(!req.body.path) cb(null,false);
-    //console.log(req.params.adir,"dirname");
-    const gmail = req.session.user;
-    let userdir = GetPrimaryDirectory(gmail);
-    userdir = path.join(userdir,req.body.path)
-    const filename = file.originalname;
+const StorageFilter = async function(req,file,cb){
+    try{
+        const adir = await getRequestDirectory(req);
 
-    //see if root path exists. If it doesn't create it
-    //const dirExists = fs.accessSync(userdir);
+        const filename = file.originalname;
+        //see if path exists. Don't create a new one.
+        const dirExists = fs.existsSync(adir);
+        //don't advance if the path doesn't already exists
+        if(!dirExists) return cb(null,false);
+        //check to see if the directory has file
+        const knownNames = listDirectory(adir);
+        const collision = knownNames.indexOf(filename) != -1;
+        let FinalName = filename;
+        if(collision){
+            //todo check if the file is exactly the same
+            
+            //not the same
+            const ext = path.extname(FinalName);
+            const base = path.filename(FinalName);
+            FinalName = base + Date.now().toString() + ext;
+        }
+        file.StorageName = FinalName;
+        file.StorageDir = adir;
 
-    const dirExists = fs.existsSync(userdir);
-    //don't advance if the path doesn't already exists
-    if(!dirExists) return cb(null,false);
-    //check to see if the directory has file
-    const knownNames = listDirectory(userdir);
-    const collision = knownNames.indexOf(filename) != -1;
-    let FinalName = filename;
-    if(collision){
-        //todo check if the file is exactly the same
-        const ext = path.extname(FinalName);
-        const base = path.filename(FinalName);
-        FinalName = base + Date.now().toString() + ext;
+        cb(null,true);
+    } catch (e){
+        console.log(e);
+        cb(null,false);
     }
-    file.StorageName = FinalName;
-    file.StorageDir = userdir;
-
-    cb(null,true);
 }
 
 const upload = multer({storage : storage,fileFilter : StorageFilter});
@@ -118,5 +157,7 @@ module.exports = {
     listDirectory,
     createUserDirectory,
     HasPrimaryDirectory,
-    GetPrimaryDirectory
+    GetPrimaryDirectory,
+    getRequestDirectory,
+    GetRequestFilePath
 }

@@ -2,6 +2,7 @@ import {useEffect,useState,useContext,useRef} from 'react'
 import { AxiosContext } from '../Context/ConnectionContext';
 
 import path, { isAbsolute } from 'path';
+import { userInfo } from 'os';
 /**
  * TODO : preserve bandwidth by sending over images in preferance of videos
  * only send videos when we want to actually watch the video
@@ -43,10 +44,13 @@ type MediaDisplay = {
     controls? : boolean,
     media? : Blob,
     passMedia? : (aurl : Blob) => void;
+    quality : string,
+    noHighlight? : boolean,
+    expand? : boolean
 }
 //className = 'Item File'
 //<img width={200} height = {200} className = 'DisplayImage' src = {imgSource} alt = "broken"></img>
-export function MediaDisplay(props : MediaDisplay ){
+export function MediaDisplay(props : MediaDisplay = {quality : 'min'}){
     const vis = useRef(null);
     const [display,setDisplay] = useState<Blob | undefined>(undefined);
     const [sentStatus,setSentStatus] = useState<boolean>(false);
@@ -54,6 +58,8 @@ export function MediaDisplay(props : MediaDisplay ){
     //abbort controller is unaware of changes
     const displayRef = useRef(display);
     const StatusRef = useRef(sentStatus);
+    const PropsRef = useRef(props);
+    PropsRef.current = props;
     displayRef.current = display;
     StatusRef.current = sentStatus;
 
@@ -72,16 +78,19 @@ export function MediaDisplay(props : MediaDisplay ){
         //locks sending and gets image
         
         const observer = new IntersectionObserver(function(){
+
+            const qual = PropsRef.current.quality
+
             if(props.filedir && props.data && props.data.name){
-                console.log("observed",StatusRef.current,displayRef.current);
-                !StatusRef.current && !displayRef.current && 
-                Server.getImg(props.filedir,props.data.name,"min")
+                !StatusRef.current && !displayRef.current &&
+                Server.getImg(props.filedir,props.data.name,qual)
                 .then((data)=>{
+                    console.log(data);
                     setDisplay(data.data);
                     setSentStatus(false);
                 })
                 .catch((e)=>{
-                    
+                    console.log(e);
                 });
                 setSentStatus(true);
             }   
@@ -95,16 +104,20 @@ export function MediaDisplay(props : MediaDisplay ){
     },[])
 
     const handleClick = ()=>{
-        //props.onClick && props.onClick();
+        props.onClick && props.onClick();
         //props.passMedia && display && props.passMedia(display);
     }
 
     return (
-        <div className='Item File Media' ref = {vis} onClick = {()=>{handleClick}}>
+        <div className={
+            `Item File Media ${props.noHighlight ? "NoHover" : ""} ${props.expand ? "Expand" : ""}`
+            } ref = {vis} onClick = {()=>{handleClick()}}
+            >
             {!display && sentStatus && <div className='load'></div>}
             {display && isTest(rimg) && <img src = {URL.createObjectURL(display)}/>}
             {display && (isTest(raudio) || isTest(rvideo)) && <label>{props.data?.name}</label>}
             {display && !(isTest(raudio) || isTest(rvideo) || isTest(rimg)) && <label>{props.data?.name}</label>}
+            
             {display && null &&
                 (
                 isTest(rvideo) && <video controls = {props.controls}><source src = {URL.createObjectURL(display)}/></video>
@@ -128,7 +141,6 @@ export function Browser(){
     const [currentDir,setCurrentDir] = useState<string>("/");
     const [dirLock,setDirLock] = useState<boolean>(false);
     const [dirData,setDirData] = useState<BuildType>({directories : [],files : []});
-    const [mediaUrl,setMediaUrl] = useState<Blob | undefined>(undefined);
     
     //for displaying data
     const [imgSource, setImgSource] = useState<any>(null);
@@ -136,16 +148,22 @@ export function Browser(){
 
     useEffect(()=>{
         //SelectedContent && setImgSource(Server.toNetworkImage(currentDir,SelectedContent));
-        SelectedContent && Server.getImg(currentDir,SelectedContent.name,"min").then(data=>{
+        SelectedContent && Server.getImg(currentDir,SelectedContent.name,"max").then(data=>{
             setImgSource(URL.createObjectURL(data.data));
         });
     },[SelectedContent])
 
     useEffect(()=>{
         //directories : [] | files : []
-        Server.dir(currentDir).then(data=>{
-            setDirData(data.data);
-            setDirLock(false);
+        Server.dir(currentDir)
+        .then(data=>{
+            if(data.status === 200){
+                setDirData(data.data);
+                setDirLock(false);
+            }
+        })
+        .catch(()=>{
+
         });
     },[currentDir])
 
@@ -172,12 +190,12 @@ export function Browser(){
                         res[key].map((item, i)=>{
 
                             return <MediaDisplay
-                                passMedia={setMediaUrl}
+                                
                                 onClick = {()=>{SetSelectedContent(item)}}
                                 key = {i}
                                 data = {item}
                                 filedir = {currentDir}
-
+                                quality = 'min'
                             />
                         })
                     }
@@ -190,11 +208,11 @@ export function Browser(){
     //<img width={200} height = {200} className = 'DisplayImage' src = {imgSource} alt = "broken"></img>
     return (
         <div className='BrowserContainer'>
-            {mediaUrl &&  <div className='DisplayContent'><button onClick={()=>{
+            {SelectedContent &&  <div className='DisplayContent'><button onClick={()=>{
+                Server.InitController();
                 SetSelectedContent(null);
-                setMediaUrl(undefined);
             }}>close</button>
-            <MediaDisplay media = {mediaUrl} width = {600} height = {600}
+            <MediaDisplay filedir={currentDir} data = {SelectedContent} quality = 'full' noHighlight = {true}
              />
             </div>
             }
@@ -204,14 +222,14 @@ export function Browser(){
                 {
                     dirData.directories.map((item,i)=>(
                         <div key = {'d' + i} className = 'Item Directory'
-                        onClick={()=>{
-                            Server.controller.abort();
-                            Server.InitController();
-                            
-                            !dirLock && setCurrentDir(path.join(currentDir,item.name))
-                            !dirLock && setDirLock(true);
-                            
-                        }}
+                            onClick={()=>{
+                                Server.controller.abort();
+                                Server.InitController();
+                                
+                                !dirLock && setCurrentDir(path.join(currentDir,item.name))
+                                !dirLock && setDirLock(true);
+                                
+                            }}
                         >
                             {item.name}
                         </div>

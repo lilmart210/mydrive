@@ -1,6 +1,6 @@
 
 import { createContext } from "react";
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 
 
 const delim = "haha";
@@ -9,7 +9,7 @@ type ServerType = {
     post : (to : string, data : {[name : string] : any} | any,opts? : {[name : string] : any},replace? : boolean) => Promise<any>,
     get : (to : string,opts : {[name : string] : any})=>Promise<any>,
     logout : () => Promise<any>,
-    login : (gmail? : string )=> Promise<any>,
+    login : (adata? : any)=> Promise<any>,
     isAuthenticated : boolean,
     upload : (data : {[name : string] : any})=>Promise<any>,
     address : string,
@@ -20,6 +20,13 @@ type ServerType = {
     toNetworkImage : (apath : string, aname : string) => string,
     controller : AbortController,
     InitController : Function,
+    RequestAdmin : ()=> Promise<any>,
+    isAdmin : boolean,
+    Signup : (adata : {[name : string] : any})=>Promise<any>,
+    getUsers : () => Promise<any>,
+    addUser : (aname : string) => Promise<any>,
+    setDirectory : (apath : string) => Promise<any>,
+    getRoot : ()=> Promise<any>
 } & Function
 
 type MyProvider = {
@@ -32,6 +39,20 @@ function Server() {
         
     }
     cmd.controller = new AbortController();
+    cmd.isAdmin = false;
+
+    cmd.RequestAdmin = async ()=>{
+        return cmd.post('/admin')
+        .then((res : AxiosResponse<any>)=>{
+            if(res.status == 200){
+                cmd.isAdmin = true;
+            }else {
+                cmd.isAdmin = false;
+            }
+        }).catch(()=>{
+            cmd.isAdmin = false;
+        })
+    }
 
     cmd.InitController = function(){
         const controller = new AbortController();
@@ -63,10 +84,15 @@ function Server() {
     cmd.isAuthenticated = false;
 
     cmd.upload = async(data : {[name : string] : any}) =>{
-        return axios(data);
+        return cmd.post(
+            '/account/upload',
+            data,
+            {headers : {'Content-Type': `multipart/form-data; boundary=----arbitrary boundary`}},
+            true
+        );
     }
     cmd.get = async(to : string,opts : {[name : string] : any} = {})=>{
-        return axios.get(to,{...options,...opts});
+        return axios.get(serverurl + to,{...options,...opts});
     }
 
     cmd.post = async (to : string,data : {[name : string] : any} | any = {},opts : {[name : string] : any} = {},replace = false) =>{
@@ -83,9 +109,14 @@ function Server() {
         return axios.post(serverurl + '/logout',{},options);
     }
 
-    cmd.login = async (gmail : string = '')=>{
-        return axios.post(serverurl + '/login',{gmail : gmail},options);
+    cmd.login = async (adata : any)=>{
+        return cmd.post('/login',adata);
+        //return axios.post(serverurl + '/login',{...adata},options);
     }
+    cmd.Signup = async (adata : {[name : string] : any}) => {
+        return cmd.post('/signup',adata);
+    }
+
 
     cmd.dir = async (apath : string = '/') =>{
         return cmd.post('/account/list',{path : apath});
@@ -96,7 +127,7 @@ function Server() {
     cmd.getImg = async(apath : string, aname : string,compression : string) =>{
         
         return cmd.post(
-            '/account/image',
+            '/account/get',
             {
             path : apath,
             name : aname,
@@ -106,8 +137,32 @@ function Server() {
         //return cmd.get(apath.replaceAll('/',delim) + delim + aname);
     }
 
+    cmd.setDirectory = async (apath : string) =>{
+        return cmd.post(
+            '/admin/setDirectory',
+            {path : apath}
+        )
+    }
+
+    cmd.getUsers = async ()=>{
+        return cmd.get(
+            '/admin/whitelist'
+        )
+    }
+    
+    cmd.addUser = async (aname : string)=>{
+        return cmd.post(
+            '/admin/newUser',
+            {gmail : aname}
+        )
+    }
+
+    cmd.getRoot = async ()=>{
+        return cmd.get('/admin/rootpath');
+    }
+
     cmd.toNetworkImage = (apath : string,aname : string)=>{
-        const base = serverurl + '/account/image/'
+        const base = serverurl + '/account/get/'
         const imgurl = apath.replaceAll('/',delim) + delim + aname
         return base + imgurl
     }

@@ -1,29 +1,25 @@
 
 const express = require('express');
+const knex = require('knex')
 const session = require('express-session');
 const cors = require('cors');
+const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 
 /**
- * todo
- * logout clear token
- * token time out 
- */
-
-/**
  * @type {fs.promises}
  */
 const fsp = require('node:fs/promises');
-const { HasPrimaryDirectory,upload,GetRequestFilePath,getRequestDirectory,createUserDirectory } = require('./DirectoryMiddleware');
-const { isWhitelisted, isAdmin,db,rootDirectory } = require('./DatabaseFunctions');
-const {makeToken} = require('./serverFunctions');
-
+const {db,isWhitelisted,isAdmin,UniqueToken,rootDirectory,startup,InitMainDirectory} = require('./DatabaseFunctions');
+const {upload,listDirectory,createUserDirectory,HasPrimaryDirectory,GetPrimaryDirectory} = require('./DirectoryMiddleware');
+const {makeToken ,hashCode} = require('./serverFunctions');
 
 //app
 const port = 8060;
 const app = express();
+
 
 app.set('trust proxy',1);
 app.use(session({
@@ -31,7 +27,6 @@ app.use(session({
     resave: false,
     saveUninitialized: true
 }));
-
 app.use(cors({
     origin: 'http://localhost:5173', // use your actual domain name (or localhost), using * is not recommended
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
@@ -40,6 +35,8 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+
 
 
 //home page
@@ -51,6 +48,11 @@ app.get('/',(req,res)=>{
     })
 })
 
+//status code 401 for unautharized
+//status 200, accepted
+//send us a gmail, we send back a session 
+//cookie that holds the address of the token 
+//otherwise redirect to homepage via
 /**
  * requires a body with gmail and user in the description
  * sends back 401(unautharized) or 200(accepted)
@@ -62,23 +64,19 @@ app.post('/login',async (req,res)=>{
     const gmail = req.body && (req.body.gmail || req.body.gmail === '');
     const password = req.body && (req.body.password || req.body.gmail === '');
 
-    if(!req.session.SessionToken && (!gmail || !password)) return res.sendStatus(400);
+    if(!gmail || !password) return res.sendStatus(400);
 
-    db('whitelist')
-    .select('gmail','token','password')
-    .then(async (data)=>{
+    await db('whitelist').select('gmail','token','password').then(async (data)=>{
         const token = data.find((item)=> item.gmail == gmail && item.password == password);
         //if has token see if token exists
         const hasToken = req.session.SessionToken && await db('whitelist')
         .whereRaw('token = ?',[req.session.SessionToken])
         .then(data => data.length == 1);
         
-        //initialize user, make sure it has required fields
         if(token || hasToken){
             const agmail = token ? token.gmail : req.session.user
             //check if dir exists, if not create it
-            const hasprimary = await HasPrimaryDirectory(agmail);
-            if(!hasprimary){
+            if(!HasPrimaryDirectory(agmail)){
                 await createUserDirectory(agmail);
             }
         }
@@ -90,9 +88,10 @@ app.post('/login',async (req,res)=>{
             req.session.SessionToken = newToke;
             req.session.user = token.gmail;
             
-            await db('whitelist').where({gmail : token.gmail}).update({token : newToke}).then(()=>{});
+            await db('whitelist').where({gmail : token.gmail}).update({token : newToke}).then();
             res.sendStatus(200);
         }else if(hasToken){
+            console.log(req.session);
             res.sendStatus(200);
         }else {
             res.sendStatus(401);
@@ -106,53 +105,6 @@ app.post('/login',async (req,res)=>{
     //res.sendStatus(401);
 });
 
-app.post('/admin',isWhitelisted,isAdmin,(req,res)=>{
-    res.sendStatus(200);
-})
-
-app.get('/admin/whitelist',isWhitelisted,isAdmin,(req,res)=>{
-    db('whitelist')
-    .select('*')
-    .then(rows=>{
-        res.send(rows);
-    })
-    .catch(()=>{
-        res.sendStatus(500);
-    })
-})
-app.get('/admin/rootpath',isWhitelisted,isAdmin,async (req,res)=>{
-    const apath = await rootDirectory;
-    res.send(apath);
-})
-
-app.post('/admin/newUser',isWhitelisted,isAdmin,(req,res)=>{
-    const gmail = req.body && (req.body.gmail || req.body.gmail === '');
-    if(!gmail) return res.sendStatus(400);
-
-    db('whitelist')
-    .insert({gmail : gmail})
-    .then(()=>{
-        res.sendStatus(200)
-    })
-    .catch(()=>{
-        res.sendStatus(500)
-    })
-});
-
-app.post('/admin/setDirectory',isWhitelisted,isAdmin,(req,res)=>{
-    const apath = req.body && req.body.path;
-    //root -> dir
-    db('root').update({dir : apath})
-    .then(()=>{
-        res.sendStatus(200);
-    })
-    .catch(()=>{
-        res.sendStatus(500);
-    })
-    console.log('Home Directory Changed : restart needed');
-
-});
-
 app.post('/logout',(req,res)=>{
     if(req.session.SessionToken){
         req.session.SessionToken = null;
@@ -161,127 +113,104 @@ app.post('/logout',(req,res)=>{
     res.sendStatus(200);
 });
 
-app.post('/signup',(req,res)=>{
-    //gmail and password
-    const gmail = req.body && (req.body.gmail || req.body.gmail === '');
-    const password = req.body && (req.body.password || req.body.gmail === '');
-
-    if(!gmail || !password) return res.sendStatus(400);
-
-    db('whitelist')
-    .select('password','gmail')
-    .where({gmail : gmail})
-    .then(async row =>{
-        const elem = row[0];
-        if(!elem.password){
-            await db('whitelist')
-            .where({gmail : gmail})
-            .update({password : password})
-            .then(()=>{
-                res.sendStatus(200);
-            })
-            .catch(()=>{
-                res.sendStatus(500);
-            })
-        }else {
-            res.sendStatus(401);
-        }
-    })
-    .catch(()=>{
-        res.sendStatus(401)
-    })
+app.get('/account/user',isWhitelisted,(req,res)=>{
+    res.send("you seem to be logged in");
 })
 
-//upload to file system
-app.post('/account/upload',isWhitelisted,upload.any(),(req,res)=>{ 
-       
+
+//upload images to database
+app.post('/account/upload',isWhitelisted,upload.any(),(req,res)=>{
+    console.log(req.files);
+    
     res.sendStatus(200);
 });
+//create a folder at given directory if dir already exists 
+app.post('/account/upload/create',isWhitelisted,(req,res)=>{
+    //where is the prefix for this coming from?
+    const basedir = GetPrimaryDirectory(req.session.user);
+    const dirname = path.join(basedir,req.body.dirname);
+    const adir = req.body.path;
+    console.log(adir,dirname);
+    fsp.exists(dirname).then((found)=>{
+        return found && res.sendStatus(400) ||
+        !found && fsp.mkdir(path.join(dirname,adir))
+        .then(()=>{res.sendStatus(201)})
+        .catch(()=>{res.sendStatus(500)})
+    }).catch(()=>res.send(500));
+});
 
-
-app.post('/account/get',isWhitelisted,async(req,res)=>{
-    const filepath = await GetRequestFilePath(req);
-    const fileexists = fs.existsSync(filepath);
-    if(!fileexists) return res.send(404);
-
-    const qual = req.body.compression;
-    
+app.post('/account/image',isWhitelisted,async(req,res)=>{
+    const aname = req.body.name;
+    const adir = req.body.path;
+    //do we want it full quality or not
+    //preview = min,full 
+    const prev = req.body.compression; 
+    const basedir = GetPrimaryDirectory(req.session.user);
+    const filepath = path.join(basedir,adir,aname);
     //const exists = fs.existsSync(path.join(basedir,"hw4.png"));
     //const exists = fs.existsSync(filepath);
     const rimg = new RegExp(/\.((png)|(gif)|(jpeg))/,'i');
-    const rjpeg = new RegExp(/\.(jpeg)/,'i');
-    const rgif = new RegExp(/\.(gif)/,'i');
-    const rpng = new RegExp(/\.(png)/,'i');
     const rvideo = new RegExp(/\.((mp4)|(mov)|(wmv)|(webm))/,'i');
     const raudio = new RegExp(/\.((ogg)|(mp3))/,'i');
 
     const isphoto = rimg.test(filepath);
     const isVideo = rvideo.test(filepath);
     const isAudio = raudio.test(filepath);
-    const isPng = rpng.test(filepath);
-    const isJpeg = rjpeg.test(filepath);
-    const isGif = rgif.test(filepath);
     
-    
-    if(isphoto && qual == 'full'){
+    if(isphoto && prev == 'full'){
         sharp(filepath)
-        .jpeg({mozjpeg : true})
+        .png()
+        .jpeg()
+        .gif()
         .toBuffer()
-        .then(buf =>{
+        .then(buf =>res.send(buf));
+    }
+    else if(isphoto && prev == 'min'){
+        sharp(filepath)
+        .resize(100,100,{fit : 'contain',withoutEnlargement : true})
+        .png({progressive : true, force : false,compressionLevel :0})
+        .jpeg({progressive : true, force : false, quality : 100})
+        .gif({progressive : true, force : false, quality : 100})
+        .toBuffer()
+        .then((buf)=>{
             res.send(buf)
-            //console.log('full ',buf.length);
+            //console.log(buf);
+        }).catch(()=>{
+            console.log("no good",filepath);
         })
-        .catch((e)=>{
-            console.log("err",e);
-            res.sendStatus(500);
-        })
+    }else{
+        res.sendStatus(200);
     }
-    else if(isphoto && qual == 'min'){
-        sharp(filepath)
-        .resize(200,200,{fit : 'contain'})
-        .jpeg({mozjpeg : true})
-        .toBuffer()
-        .then(buf=>{
-            res.send(buf);
-            //console.log('min ',buf.length)
-        })
-        .catch((e)=>{
-            console.log(e);
-        })
-    }
-    else if((isAudio || isVideo) && qual == 'full'){
-        res.sendFile(filepath);
-    }
-    else {
-        //dunno what this is, send as raw text
-        res.sendFile(filepath);
-    }
+
 })
 
-//create folders | escape (../) vunlerability?
-app.post('/create/dir',isWhitelisted,async(req,res)=>{
-    const base = await getRequestDirectory(req);
-    const reqPath = path.join(base,req.body.name);
-    const pathexists = fs.existsSync(reqPath);
+//create folders
+app.post('/create/dir',isWhitelisted,(req,res)=>{
+    const primdir = GetPrimaryDirectory(req.session.user);
+    const apath = req.body.path;
+    const dirname = req.body.name;
+    const newdir = path.join(primdir,apath,dirname);
+    const pathexists = fs.existsSync(newdir);
 
     if(pathexists) {
         //path aleady exists
         res.sendStatus(200);
     }else {
-        fs.mkdir(reqPath,()=>{
+        fs.mkdir(newdir,()=>{
             res.sendStatus(200);
         },(e)=>{
-            console.log(e);
             res.sendStatus(401);
         })
     }
 })
 
-
+//send back the main directory
 app.post('/account/list',isWhitelisted,async (req,res)=>{
     //req.params.path
     //listDirectory,getprimarydir
-    const dirpath = await getRequestDirectory(req);
+    const primdir = await GetPrimaryDirectory(req.session.user);
+    const dirpath = path.join(primdir,req.body.path);
+    console.log(dirpath,"dd",primdir);
     //read directory
     fsp.readdir(dirpath,{withFileTypes : true})
     .then((data)=>{
@@ -305,12 +234,39 @@ app.post('/account/list',isWhitelisted,async (req,res)=>{
 app.get('/account/listsecret',isWhitelisted,(req,res)=>{
 
 });
+//list files and directories located in a speific folder
+//directory is always defined
+app.get('/account/list/:directory',isWhitelisted,(req,res)=>{
+    const adir = req.params.directory;
+    //console.log(adir,adir == 'undefined',adir =='null',typeof adir);
+    
+    res.send({"files" : [],"directories" : []});
+})
+
+app.get('account/metadata',isWhitelisted,(req,res)=>{
+    res.send({"msg" : "Where the problem at?"})
+});
+
+app.post('/account/admin',isWhitelisted,isAdmin,(req,res)=>{
+    res.send(200);
+});
+
+app.post('/account/admin/newuser',isWhitelisted,isAdmin,(req,res)=>{
+    res.send(200);
+});
+
+app.post('/account/admin/update',isWhitelisted,isAdmin,(req,res)=>{
+    res.send(200);
+});
+
 
 //before we listen we must make sure everything is in order
 async function InitialCheck(){
     //initialize root database dir path
     const rrr = await rootDirectory;
-    
+    console.log("initial check" ,rootDirectory,typeof rootDirectory);
+    //InitMainDirectory();
+    //knex makes sure the database always exists
     //initialize the tables 
     await db.schema.hasTable('whitelist').then(async (exists)=>{
         if(!exists){
@@ -332,8 +288,8 @@ async function InitialCheck(){
                 //secret, trash will be actual folders
 
             }).then(()=>{console.log("initialized table")})
-            //password : 'admin',
-            await db('whitelist').insert([{gmail : 'admin',admin : true}]).then(()=>{
+            
+            await db('whitelist').insert([{gmail : 'admin',password : 'admin',admin : true}]).then(()=>{
                 console.log('inserted user admin password admin. Change at /admin')
             })
             //default user is admin
@@ -354,11 +310,10 @@ async function InitialCheck(){
     })
     
     
-    //Everything has been loaded
+    //make sure the 
     console.log("database loaded. Change settings at Localhost/admin")
-    //host the server
     app.listen(port,()=>{
-        console.log(`listening on localhost:${port}/`);
+        console.log(`listening on port : ${port}`);
     })
 }
 

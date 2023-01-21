@@ -31,6 +31,7 @@ export function Home(){
                     <button onClick={()=>{nav('/home/Trash')}}>Trash</button>
                     <button onClick={()=>{nav('/home/Secret')}}>Secret</button>
                     <button onClick={()=>{nav('/home/Favorite')}}>Favorite</button>
+                    <button onClick={()=>{nav('/admin')}}>Admin Panel</button>
                     <button onClick={()=>{nav('/logout')}}>Logout</button>
                 </div>
                 <div className='LeftArtifact Widget'>

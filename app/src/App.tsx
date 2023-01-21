@@ -1,8 +1,8 @@
 import { useState } from 'react'
 
-import {Route,Routes,Navigate} from 'react-router-dom';
+import {Route,Routes,Navigate,Outlet} from 'react-router-dom';
 import {Home} from './module/home/home'
-import { Login,Logout,MyProtected} from './module/login/login';
+import { Login,Logout,MyProtected,AdminProtected,SignUp} from './module/login/login';
 
 import { Header } from './module/Header/Header';
 import { Auth0Provider } from "@auth0/auth0-react";
@@ -11,6 +11,7 @@ import { AxiosContext } from './module/Context/ConnectionContext';
 import { AxiosProvider } from './module/Context/ConnectionContext';
 import { Upload } from './module/browser/Upload';
 import { Browser } from './module/browser/Browser';
+import { AdminPanel } from './module/browser/Admin';
 
 //port number 5173
 
@@ -29,6 +30,10 @@ function App() {
             </Route>
             <Route path = 'logout' element = {<Logout></Logout>}/>
           </Route>
+          <Route path = '/admin' element = {<AdminProtected></AdminProtected>}>
+            <Route path = '/admin/' element = {<AdminPanel></AdminPanel>}></Route>
+          </Route>
+          <Route path = '/signup' element = {<SignUp></SignUp>}/>
           <Route path = '*' element = {<Navigate to = '/'/>}/>
         </Routes>
       </AxiosProvider>

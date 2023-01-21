@@ -16,10 +16,6 @@ export function Login(props? : {[setAuth : string] : (abool : boolean)=>void}) {
     const [message,setMessage] = useState("");
     const nav = useNavigate();
     const {Server} = useContext(AxiosContext);
-
-    function tryLogin(aname : string) : Promise<boolean>{
-        return Server.login(aname).then(data => {return data.status == 200});
-    }
     
 
     const changeHandler = (event :FormEvent<HTMLInputElement>)=>{
@@ -32,13 +28,18 @@ export function Login(props? : {[setAuth : string] : (abool : boolean)=>void}) {
     }
 
     const submit = ()=>{
-        tryLogin(formstate.gmail).then((data)=>{
-            if(data){
+
+        Server.login(formstate)
+        .then(data => {
+            const stat = data.status == 200;
+            if(stat){
                 nav('/home');
             }else {
                 setMessage("Failed to login");
             }
         })
+        .catch(()=>{});
+
     }
 
     return (
@@ -50,12 +51,15 @@ export function Login(props? : {[setAuth : string] : (abool : boolean)=>void}) {
                 </label>
                 <input
                     name = 'gmail'
-                    type = 'text'
+                    type = 'email'
                     onChange={changeHandler}
                 />
-            
+                <label>password</label>
+                <input name = 'password' type={'password'} onChange={changeHandler}></input>
                 <button onClick={submit}>Submit</button>
+                <button onClick={()=>{nav('/signup')}}>signup</button>
             </div>
+            
         </div>
     )
 }
@@ -71,11 +75,11 @@ export function MyProtected(props? : {[auth : string] : boolean}) {
     useEffect(()=>{
         //check to see if valid session token exists in session cookie
         //by asking the server if we are logged in
-        const auto = async function(){
             //await Server.logout();
-            const resp = await Server.login().then(data =>setAuth(data.status == 200));
-        }
-        auto()
+        Server.login()
+        .then(data =>setAuth(data.status == 200))
+        .catch(()=>{});
+        
     },[isAuth])
 
     return Server.isAuthenticated ? <Outlet/> : <Login></Login>;
@@ -93,4 +97,82 @@ export function Logout(){
     },[])
 
     return <div>Logging out</div>
+}
+
+
+export function AdminProtected(props : {[name : string] : any}){
+    const {Server} = useContext(AxiosContext);
+    const [isAdmin,setAdmin] = useState(false);
+    const nav = useNavigate();
+
+    useEffect(()=>{
+        Server.RequestAdmin()
+        .then(()=>{
+            const adminAuth = Server.isAdmin && Server.isAuthenticated
+            setAdmin(adminAuth);
+            adminAuth ? nav('/admin') : nav('/');
+        })
+        .catch(()=>{});
+
+    },[])
+
+
+    return isAdmin ? <Outlet/> : <label>You are not Allowed</label>
+}
+
+//React.HTMLAttributes<HTMLDivElement>.style?: React.CSSProperties |
+
+const signupstyle : React.CSSProperties = {
+    display : 'flex',
+    flexDirection : 'column',
+    maxWidth : '30vw',
+    maxHeight : '60 vh',
+
+}
+
+export function SignUp(){
+    const {Server} = useContext(AxiosContext);
+    const [msgResp,setResp] = useState('');
+    const [data,setdata] = useState<{[name : string] : any}>({});
+    const nav = useNavigate();
+
+
+    const change = (e : FormEvent<HTMLInputElement>) => {
+        const aname = e.currentTarget.name;
+        const aval = e.currentTarget.value;
+        const newpack : {[name : string] : any}= {};
+        newpack[aname] = aval;
+        setdata({...data , ...newpack});
+    }
+
+    const click = ()=>{
+        const isequal = data.password && data.password == data.confirm;
+
+        !isequal && data.password && setResp("Password not the same")
+        !isequal && !data.password && setResp("Invalid Password")
+
+        isequal && Server.Signup(data)
+        .then((rep)=>{
+            if(rep.status == 200){
+                nav('/home');
+            }else {
+                setResp('You Are Not Authorized')
+            }
+        })
+        .catch(()=>{});
+    }
+
+    return (
+        <div>
+            <div style={signupstyle}>
+                <label>Sign up</label>
+                <label>{msgResp}</label>
+                <input onChange={change} name = 'gmail' type={'email'} placeholder ='email'></input>
+                <input onChange={change} name = 'password' type={'password'} placeholder = 'password'/>
+                <input onChange={change} name = 'confirm' type={'password'} placeholder = 'Confirm Password'/>
+                <button onClick={click}>Submit</button>
+                <button onClick={()=>nav('/')}>back</button>
+            </div>
+        </div>
+    )
 }
