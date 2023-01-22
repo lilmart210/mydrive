@@ -41,16 +41,6 @@ app.use(cors({
 
 app.use(express.json());
 
-
-//home page
-app.get('/',(req,res)=>{
-    db('whitelist').select('*').then((data)=>{
-        res.send(data);
-    }).catch((e)=>{
-        console.log(e);
-    })
-})
-
 /**
  * requires a body with gmail and user in the description
  * sends back 401(unautharized) or 200(accepted)
