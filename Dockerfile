@@ -5,13 +5,13 @@ FROM node:19-alpine
 
 WORKDIR /server
 
-COPY package*.json .
+COPY package*.json ./
 
 RUN mkdir database
 
 RUN npm install
 
-COPY *.js .
+COPY *.js ./
 
 EXPOSE 8060
 
