@@ -1,3 +1,5 @@
+# Not responsible for any data loss or curruption
+
 # Schema for Database and FileSystem
 
 ### whitelist table
