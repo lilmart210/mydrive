@@ -2,6 +2,8 @@
 
 FROM node:19-alpine
 
+ENV VITE_ADDRESS=http://localhost:8060
+
 WORKDIR /app
 
 COPY *.json ./

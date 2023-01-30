@@ -60,7 +60,13 @@ function Server() {
     }
 
 
-    const serverurl = 'http://localhost:8060'
+    const envUrl = import.meta.env.VITE_ADDRESS;
+
+    if(!envUrl) console.error('No environment variable Address, defaulting to localhost:8060')
+    console.log(envUrl);
+    //VITE_ADDRESS=http://localhost:8060
+    const serverurl = envUrl ? envUrl : 'http://localhost:8060';
+
     const options = {
         withCredentials : true,
         validateStatus : (status : number)=>{
