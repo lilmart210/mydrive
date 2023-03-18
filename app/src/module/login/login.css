@@ -18,3 +18,10 @@
     flex-direction: column;
     flex-wrap: wrap;
 }
+.LoginPanel > input {
+    width : 10vw;
+}
+.Panel {
+    display: flex;
+    flex-direction: row;
+}

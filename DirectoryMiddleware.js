@@ -19,38 +19,48 @@ const {db} = require('./DatabaseFunctions');
  * ensures a drive is available
  * returns the primary compartment for storing data
  */
-const GetPrimaryDirectory = async (gmail) =>{
+const GetPrimaryDirectory = async (email) =>{
     //table must have
     //favorite,secretfavorite,shared
     //secretshared,drives,maindrive
     //secretedrive,trashdrive
-    let adrivepath =
-
-    db('whitelist')
-    .where({gmail : gmail})
+    return db('Users')
+    .where({email : email})
     .select('maindrive')
-    .then((drive)=>drive[0].maindrive);
-
-    return adrivepath;
+    .then((rows)=>rows[0].maindrive)
+    .catch(()=>console.log("couldn't get main drive"));
 }
 
 //check if primary directory exists. Syncronous
-async function HasPrimaryDirectory(gmail){
-    const apath = await GetPrimaryDirectory(gmail);
-    return fs.existsSync(apath);
+async function HasPrimaryDirectory(email){
+    const apath = await GetPrimaryDirectory(email);
+
+    return apath && fs.existsSync(apath);
 }
 
 //creates the user directory
-async function createUserDirectory(gmail){
-    const user = gmail.split('@')[0];
-    const userhash = hashCode(gmail).toString();
+async function createUserDirectory(email){
+    const user = email.split('@')[0];
+    const userhash = hashCode(email).toString();
     const apath = path.join(await rootDirectory,user + userhash);
     
-    await db('whitelist')
-    .where({gmail : gmail})
+
+    const prm1 = db('Users')
+    .where({email : email})
     .select('maindrive')
     .update({maindrive : apath})
-    .then(()=>{});
+    .then(()=>{})
+    .catch(()=>{});
+
+    //know for sure this user has no existing drives | instantiation
+    const prm2 = db('Users')
+    .where({email : email})
+    .select('drives')
+    .update({drives : JSON.stringify([apath])})
+    .then(()=>{})
+    .catch(()=>{});
+
+    await Promise.allSettled([prm1,prm2]);
 
     fs.mkdirSync(apath,{recursive : true},()=>{});
 
@@ -59,9 +69,17 @@ async function createUserDirectory(gmail){
 
 async function getRequestDirectory(req){
     //if request has specifified drive, switch over
-    const dir = GetPrimaryDirectory(req.session.user)
+    const hasDiry = await HasPrimaryDirectory(req.auth.email);
+    if(!hasDiry){
+        await createUserDirectory(req.auth.email);
+    }
+    
+    const dir = GetPrimaryDirectory(req.auth.email)
     .then(abasedir=>{
-        const dirname = path.join(abasedir,req.body.path);
+        let dirname = abasedir
+        if(req.body.path){
+            dirname = path.join(abasedir,req.body.path);
+        }
         return dirname;
     })
     return dir;

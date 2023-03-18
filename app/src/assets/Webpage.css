@@ -10,14 +10,32 @@
 }
 
 .LoginPanel {
-    width : 20vw;
-    height : 45vh;
+    width : max(300px,20vw);
+    height : max(450px,45vh);
     border: 2px solid white;
     border-radius: 10px;
 
     display: flex;
     flex-direction: column;
     flex-wrap: wrap;
+    align-content: center;
+}
+
+.LoginPanel > * {
+  width : 80%;
+}
+.LoginPanel > h1 {
+  justify-content: center;
+  text-align: center;
+}
+
+.Panel {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
+.Panel > * {
+  width : 100%;
 }
 
 /** Home Page **/
@@ -293,9 +311,9 @@
 .Media {
   display: flex;
   justify-content: center;
-  overflow: hidden; 
+  overflow: hidden;
+  object-fit: contain;
 }
-
 
 .Item,.File video,img,audio {
   object-fit: contain;
@@ -304,33 +322,23 @@
 .Item,.File {
   object-fit: contain;
 }
-.File:has(audio){
-  width : 200px;
-  height : 100px;
-}
-.File:has(video){
-  width: 200px;
-  height : 200px;
-}
-.File:has(img) {
+.File{
   width : 200px;
   height : 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 .File:has(label){
-  width : 200px;
-  height : 200px;
   word-wrap: break-word;
-}
-.File:has(.load) .load{
-  width : 100px;
-  height : 100px;
-  background: url('../assets/load.svg');
 }
 
 .Expand {
-  width : 80%;
-  height : 80%;
+  overflow: none;
+  aspect-ratio: auto;
+  
 }
+
 .NoHover:hover{
   border: none;
 }

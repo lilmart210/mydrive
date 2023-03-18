@@ -1,18 +1,11 @@
 import {useEffect,useState,useContext,useRef} from 'react'
 import { AxiosContext } from '../Context/ConnectionContext';
+import loadsvg from '../../assets/load.svg'
 
 import path, { isAbsolute } from 'path';
-import { userInfo } from 'os';
-/**
- * TODO : preserve bandwidth by sending over images in preferance of videos
- * only send videos when we want to actually watch the video
- * 
- * songs and videos can only be played if clicked on and displayed 
- * images will only be regular quality if clicked on as well
- * otherwise everything that is shown is either blank or compressed
- */
 
 type MyImage = {
+    DateTime : string | null,
     atime : string,
     atimeMs : number,
     birthtime : number,
@@ -48,82 +41,71 @@ type MediaDisplay = {
     noHighlight? : boolean,
     expand? : boolean
 }
-//className = 'Item File'
-//<img width={200} height = {200} className = 'DisplayImage' src = {imgSource} alt = "broken"></img>
+//server only uses .mp4, .mp3 and jpg
+//when downloading original, the original format is kept
 export function MediaDisplay(props : MediaDisplay = {quality : 'min'}){
-    const vis = useRef(null);
-    const [display,setDisplay] = useState<Blob | undefined>(undefined);
-    const [sentStatus,setSentStatus] = useState<boolean>(false);
-    const {Server} = useContext(AxiosContext);
-    //abbort controller is unaware of changes
-    const displayRef = useRef(display);
-    const StatusRef = useRef(sentStatus);
-    const PropsRef = useRef(props);
-    PropsRef.current = props;
-    displayRef.current = display;
-    StatusRef.current = sentStatus;
+    const displayRef = useRef<HTMLDivElement>(null);
+    const imageRef = useRef<HTMLImageElement>(null);
+    const vidRef = useRef<HTMLVideoElement>(null);
+    const audRef = useRef<HTMLAudioElement>(null);
+    const objRef = useRef<HTMLObjectElement>(null);
 
+    const {getImg,toNetworkSource} = useContext(AxiosContext);
+    const [blobdata,setBlobData] = useState<Blob | null>(null)
+    const [NetSRC,setNetSRC] = useState<string>(loadsvg);
 
-
-    const rimg = new RegExp(/\.((png)|(gif)|(jpeg))/,'i');
-    const rvideo = new RegExp(/\.((mp4)|(mov)|(wmv)|(webm))/,'i');
+    const rimg = new RegExp(/\.((png)|(gif)|(jpeg)|(jpg))/,'i');
+    const rvideo = new RegExp(/\.((mp4)|(mov)|(wmv)|(webm)|(mkv))/,'i');
     const raudio = new RegExp(/\.((ogg)|(mp3))/,'i');
-    
-    const isTest = (reg : RegExp) : boolean =>{
-        return props.data ? reg.test(props.data.name) : false;
+
+    function relse(aname : string){
+        return !(rimg.test(aname) || rvideo.test(aname) || raudio.test(aname));
+    }
+    function getName(){
+        return props.data && props.data.name || "";
     }
 
+    function intersect(entries : any) {
+        if(entries[0].isIntersecting){
+            //visible
+            if(props.filedir && props.data && !blobdata){
+                const ssr = toNetworkSource(props.filedir,props.data?.name,props.quality);
+                setNetSRC(ssr)
+            }
+        }else {
+            //not visible
+            setNetSRC(loadsvg);
+        }
+    }
 
+    //use intersection observer to render videos/images
     useEffect(function(){
-        //locks sending and gets image
-        
-        const observer = new IntersectionObserver(function(){
+        displayRef.current?.addEventListener('click',ClickHandler)
+        objRef.current?.addEventListener('click',ClickHandler);
+        //imageRef.current?.addEventListener('x')       
 
-            const qual = PropsRef.current.quality
+        const visibleObserver = new IntersectionObserver(intersect);
+        displayRef.current && visibleObserver.observe(displayRef.current);
 
-            if(props.filedir && props.data && props.data.name){
-                !StatusRef.current && !displayRef.current &&
-                Server.getImg(props.filedir,props.data.name,qual)
-                .then((data)=>{
-                    console.log(data);
-                    setDisplay(data.data);
-                    setSentStatus(false);
-                })
-                .catch((e)=>{
-                    console.log(e);
-                });
-                setSentStatus(true);
-            }   
-        });
-
-        vis.current && observer.observe(vis.current);
-        
         return ()=>{
-            observer.disconnect();
+            visibleObserver.disconnect();
+            displayRef.current?.removeEventListener('click',ClickHandler);
         }
     },[])
 
-    const handleClick = ()=>{
+    //onclick
+    function ClickHandler(e : Event){
         props.onClick && props.onClick();
-        //props.passMedia && display && props.passMedia(display);
     }
 
     return (
-        <div className={
-            `Item File Media ${props.noHighlight ? "NoHover" : ""} ${props.expand ? "Expand" : ""}`
-            } ref = {vis} onClick = {()=>{handleClick()}}
-            >
-            {!display && sentStatus && <div className='load'></div>}
-            {display && isTest(rimg) && <img src = {URL.createObjectURL(display)}/>}
-            {display && (isTest(raudio) || isTest(rvideo)) && <label>{props.data?.name}</label>}
-            {display && !(isTest(raudio) || isTest(rvideo) || isTest(rimg)) && <label>{props.data?.name}</label>}
-            
-            {display && null &&
-                (
-                isTest(rvideo) && <video controls = {props.controls}><source src = {URL.createObjectURL(display)}/></video>
-                || isTest(rimg) && <img src = {URL.createObjectURL(display)} alt = "No Image Data"></img> 
-                || isTest(raudio) && <audio><source src = {URL.createObjectURL(display)}/></audio>
-                )
+        <div ref = {displayRef} className={`Item File Media ${props.noHighlight ? "NoHover" : ""} ${props.expand ? "Expand" : ""}`}>
+            {
+                rimg.test(getName()) && <img src = {NetSRC} ref = {imageRef} alt = "Missing Source"></img> ||
+                rvideo.test(getName()) && <video src = {NetSRC} ref = {vidRef} controls>No Video</video> ||
+                raudio.test(getName()) && <audio src = {NetSRC} ref = {audRef}>No Audio</audio> ||
+                relse(getName()) && props.onClick && <img alt ={props.data?.name}/> ||
+                relse(getName()) && !props.onClick && <object data = {NetSRC} ref ={objRef} >Not Supported</object>
             }
         </div>
     )
@@ -136,7 +118,7 @@ export function Browser(){
         directories : Array<{[name : string] : any}>,
         files : Array<MyImage>,
     }
-    const {Server} = useContext(AxiosContext);
+    const {getImg,dir,InitController,controller} = useContext(AxiosContext);
     const [SelectedContent,SetSelectedContent] = useState<null | MyImage>(null);
     const [currentDir,setCurrentDir] = useState<string>("/");
     const [dirLock,setDirLock] = useState<boolean>(false);
@@ -147,24 +129,14 @@ export function Browser(){
 
 
     useEffect(()=>{
-        //SelectedContent && setImgSource(Server.toNetworkImage(currentDir,SelectedContent));
-        SelectedContent && Server.getImg(currentDir,SelectedContent.name,"max").then(data=>{
-            setImgSource(URL.createObjectURL(data.data));
-        });
-    },[SelectedContent])
-
-    useEffect(()=>{
         //directories : [] | files : []
-        Server.dir(currentDir)
-        .then(data=>{
-            if(data.status === 200){
-                setDirData(data.data);
-                setDirLock(false);
-            }
+        dir(currentDir)
+        .then(res=>{
+           if(res.status){
+               setDirData(res.data);
+               setDirLock(false);
+           }
         })
-        .catch(()=>{
-
-        });
     },[currentDir])
 
     const buildCategories = (filelist : MyImage[]) : React.ReactNode[] =>{
@@ -172,12 +144,24 @@ export function Browser(){
         //seperate based on date
         let res : {[name : number] : Array<MyImage>} = dirData.files
         .reduce((axx : {[name : string] : any},item : MyImage)=>{
-            const newtime : number = Math.floor(item.birthtimeMs / (24 * 60 * 60 * 1000));
+            let chosentime = item.birthtimeMs
+            if(item.DateTime){
+                //yyyy:mm:dd hh:mm:ss
+                const ymd = item.DateTime.split(" ")[0].split(":").map((t)=>Number(t));
+                const hms = item.DateTime.split(" ")[1].split(":").map((t)=>Number(t));
+                chosentime = new Date(ymd[0],ymd[1],ymd[2],hms[0],hms[1],hms[2]).getTime();
+            }
+
+            const newtime : number = Math.floor(chosentime / (24 * 60 * 60 * 1000));
             axx[newtime] ? axx[newtime].push(item) : axx[newtime] = [item];
             return axx;
         },{})
         //build objects
-        for(let key in res){
+        const sortedKeys = Object.keys(res).sort().reverse();
+        ;
+        for(let s = 0;s< sortedKeys.length;s++){
+            //forces me to use number...
+            const key : number = parseInt(sortedKeys[s]);
             const adate = new Date(Number(key) * 24 * 60 * 60 * 1000);
             const aday = adate.getDate();
             const ayear = adate.getFullYear();
@@ -187,7 +171,7 @@ export function Browser(){
                 <div key = {key} className = 'MediaContainer'>
                     <label>{`${ayear} ${amonth} ${aday}`}</label>
                     {
-                        res[key].map((item, i)=>{
+                        res[key].map((item : MyImage, i : number)=>{
 
                             return <MediaDisplay
                                 
@@ -204,36 +188,43 @@ export function Browser(){
         }
         return ret;
     }
+
+    function CloseBigDisplay(){
+        //Server.InitController();
+        SetSelectedContent(null);
+    }
+
+    function buildDirectories(data : BuildType["directories"]){
+        return data.map((item,i)=>(
+            <div key = {'d' + i}
+                className = 'Item Directory'
+                onClick={()=>{
+                    controller.abort();
+                    InitController();
+                    !dirLock && setCurrentDir(path.join(currentDir,item.name))
+                    !dirLock && setDirLock(true);
+                }}
+            >
+                {item.name}
+            </div>
+        ))
+    }
     //data = {SelectedContent} filedir = {currentDir}
     //<img width={200} height = {200} className = 'DisplayImage' src = {imgSource} alt = "broken"></img>
     return (
         <div className='BrowserContainer'>
-            {SelectedContent &&  <div className='DisplayContent'><button onClick={()=>{
-                Server.InitController();
-                SetSelectedContent(null);
-            }}>close</button>
-            <MediaDisplay filedir={currentDir} data = {SelectedContent} quality = 'full' noHighlight = {true}
-             />
-            </div>
+            {
+                SelectedContent &&
+                <div className='DisplayContent'>
+                    <button onClick={CloseBigDisplay}>close</button>
+                    <MediaDisplay filedir={currentDir} data = {SelectedContent} quality = 'full' noHighlight = {true}/>
+                </div>
             }
             <div className='Header'></div>
             <div className='FileContainer'>
                 <button onClick={()=>{setCurrentDir(path.dirname(currentDir))}}>../</button>
                 {
-                    dirData.directories.map((item,i)=>(
-                        <div key = {'d' + i} className = 'Item Directory'
-                            onClick={()=>{
-                                Server.controller.abort();
-                                Server.InitController();
-                                
-                                !dirLock && setCurrentDir(path.join(currentDir,item.name))
-                                !dirLock && setDirLock(true);
-                                
-                            }}
-                        >
-                            {item.name}
-                        </div>
-                    ))
+                    buildDirectories(dirData.directories)
                 }
                 {
                     buildCategories(dirData.files)

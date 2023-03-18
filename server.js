@@ -5,6 +5,10 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
+const bcryypt = require('bcrypt');
+const exif = require('jpeg-exif');
+const mime = require('mime');
+
 
 /**
  * todo
@@ -17,7 +21,7 @@ const sharp = require('sharp');
  */
 const fsp = require('node:fs/promises');
 const { HasPrimaryDirectory,upload,GetRequestFilePath,getRequestDirectory,createUserDirectory } = require('./DirectoryMiddleware');
-const { isWhitelisted, isAdmin,db,rootDirectory } = require('./DatabaseFunctions');
+const { isWhitelisted, isAdmin,db,rootDirectory,ensureDirectories,checkjwt } = require('./DatabaseFunctions');
 const {makeToken} = require('./serverFunctions');
 
 
@@ -33,7 +37,7 @@ app.use(session({
 }));
 
 app.use(cors({
-    origin: 'http://localhost:5173', // use your actual domain name (or localhost), using * is not recommended
+    origin: ['http://localhost:5173','drive.curruptnation.com'], // use your actual domain name (or localhost), using * is not recommended
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Origin', 'X-Requested-With', 'Accept', 'x-client-key', 'x-client-token', 'x-client-secret', 'Authorization'],
     credentials: true
@@ -41,67 +45,14 @@ app.use(cors({
 
 app.use(express.json());
 
-/**
- * requires a body with gmail and user in the description
- * sends back 401(unautharized) or 200(accepted)
- * 400(bad request) || 500(crash unexpectedly)
- * 
- */
-app.post('/login',async (req,res)=>{
-    
-    const gmail = req.body && (req.body.gmail || req.body.gmail === '');
-    const password = req.body && (req.body.password || req.body.gmail === '');
 
-    if(!req.session.SessionToken && (!gmail || !password)) return res.sendStatus(400);
 
-    db('whitelist')
-    .select('gmail','token','password')
-    .then(async (data)=>{
-        const token = data.find((item)=> item.gmail == gmail && item.password == password);
-        //if has token see if token exists
-        const hasToken = req.session.SessionToken && await db('whitelist')
-        .whereRaw('token = ?',[req.session.SessionToken])
-        .then(data => data.length == 1);
-        
-        //initialize user, make sure it has required fields
-        if(token || hasToken){
-            const agmail = token ? token.gmail : req.session.user
-            //check if dir exists, if not create it
-            const hasprimary = await HasPrimaryDirectory(agmail);
-            if(!hasprimary){
-                await createUserDirectory(agmail);
-            }
-        }
-
-        //found and send
-        if(token){
-            //create session token
-            const newToke = makeToken();
-            req.session.SessionToken = newToke;
-            req.session.user = token.gmail;
-            
-            await db('whitelist').where({gmail : token.gmail}).update({token : newToke}).then(()=>{});
-            res.sendStatus(200);
-        }else if(hasToken){
-            res.sendStatus(200);
-        }else {
-            res.sendStatus(401);
-        }
-    }).catch((e)=>{
-        console.log(e);
-        //something went wrong
-        res.sendStatus(500)
-    })
-    
-    //res.sendStatus(401);
-});
-
-app.post('/admin',isWhitelisted,isAdmin,(req,res)=>{
+app.post('/admin',checkjwt,isWhitelisted,isAdmin,(req,res)=>{
     res.sendStatus(200);
 })
 
-app.get('/admin/whitelist',isWhitelisted,isAdmin,(req,res)=>{
-    db('whitelist')
+app.get('/admin/whitelist',checkjwt,isWhitelisted,isAdmin,(req,res)=>{
+    db('Users')
     .select('*')
     .then(rows=>{
         res.send(rows);
@@ -110,17 +61,17 @@ app.get('/admin/whitelist',isWhitelisted,isAdmin,(req,res)=>{
         res.sendStatus(500);
     })
 })
-app.get('/admin/rootpath',isWhitelisted,isAdmin,async (req,res)=>{
+app.get('/admin/rootpath',checkjwt,isWhitelisted,isAdmin,async (req,res)=>{
     const apath = await rootDirectory;
     res.send(apath);
 })
 
-app.post('/admin/newUser',isWhitelisted,isAdmin,(req,res)=>{
-    const gmail = req.body && (req.body.gmail || req.body.gmail === '');
-    if(!gmail) return res.sendStatus(400);
+app.post('/admin/newUser',checkjwt,isWhitelisted,isAdmin,(req,res)=>{
+    const email = req.body && (req.body.email || req.body.email === '');
+    if(!email) return res.sendStatus(400);
 
-    db('whitelist')
-    .insert({gmail : gmail})
+    db('Users')
+    .insert({email : email})
     .then(()=>{
         res.sendStatus(200)
     })
@@ -129,7 +80,7 @@ app.post('/admin/newUser',isWhitelisted,isAdmin,(req,res)=>{
     })
 });
 
-app.post('/admin/setDirectory',isWhitelisted,isAdmin,(req,res)=>{
+app.post('/admin/setDirectory',checkjwt,isWhitelisted,isAdmin,(req,res)=>{
     const apath = req.body && req.body.path;
     //root -> dir
     db('root').update({dir : apath})
@@ -143,79 +94,46 @@ app.post('/admin/setDirectory',isWhitelisted,isAdmin,(req,res)=>{
 
 });
 
-app.post('/logout',(req,res)=>{
-    if(req.session.SessionToken){
-        req.session.SessionToken = null;
-        req.session.user = null;
-    }
-    res.sendStatus(200);
-});
-
-app.post('/signup',(req,res)=>{
-    //gmail and password
-    const gmail = req.body && (req.body.gmail || req.body.gmail === '');
-    const password = req.body && (req.body.password || req.body.gmail === '');
-
-    if(!gmail || !password) return res.sendStatus(400);
-
-    db('whitelist')
-    .select('password','gmail')
-    .where({gmail : gmail})
-    .then(async row =>{
-        const elem = row[0];
-        if(!elem.password){
-            await db('whitelist')
-            .where({gmail : gmail})
-            .update({password : password})
-            .then(()=>{
-                res.sendStatus(200);
-            })
-            .catch(()=>{
-                res.sendStatus(500);
-            })
-        }else {
-            res.sendStatus(401);
-        }
-    })
-    .catch(()=>{
-        res.sendStatus(401)
-    })
-})
-
 //upload to file system
-app.post('/account/upload',isWhitelisted,upload.any(),(req,res)=>{ 
-       
+app.post('/account/upload',checkjwt,isWhitelisted,upload.any(),(req,res)=>{
     res.sendStatus(200);
 });
 
+app.get('/image/get/user/:token/dir/:dir/name/:name/comp/:compression',checkjwt,isWhitelisted,async(req,res)=>{
+    //delim is !aasd!aa
+    
+    const newbody = {
+        name : req.params.name,
+        path : req.params.dir.replace('!aasd!aa','/')
+    }
+    req.body = newbody;
+    
 
-app.post('/account/get',isWhitelisted,async(req,res)=>{
     const filepath = await GetRequestFilePath(req);
     const fileexists = fs.existsSync(filepath);
-    if(!fileexists) return res.send(404);
+    if(!fileexists) return res.sendStatus(404);
 
-    const qual = req.body.compression;
-    
-    //const exists = fs.existsSync(path.join(basedir,"hw4.png"));
-    //const exists = fs.existsSync(filepath);
-    const rimg = new RegExp(/\.((png)|(gif)|(jpeg))/,'i');
-    const rjpeg = new RegExp(/\.(jpeg)/,'i');
-    const rgif = new RegExp(/\.(gif)/,'i');
-    const rpng = new RegExp(/\.(png)/,'i');
-    const rvideo = new RegExp(/\.((mp4)|(mov)|(wmv)|(webm))/,'i');
+    const qual = req.params.compression;
+
+    //needs to be in sync with the request
+    const rimg = new RegExp(/\.((png)|(gif)|(jpeg)|(jpg))/,'i');
+    const rvideo = new RegExp(/\.((mp4)|(mov)|(wmv)|(webm)|(mkv))/,'i');
     const raudio = new RegExp(/\.((ogg)|(mp3))/,'i');
 
     const isphoto = rimg.test(filepath);
     const isVideo = rvideo.test(filepath);
     const isAudio = raudio.test(filepath);
-    const isPng = rpng.test(filepath);
-    const isJpeg = rjpeg.test(filepath);
-    const isGif = rgif.test(filepath);
-    
-    
-    if(isphoto && qual == 'full'){
-        sharp(filepath)
+    const iselse = !(isphoto || isVideo || isAudio)
+
+    if(isphoto){
+        let imgdata = sharp(filepath)
         .jpeg({mozjpeg : true})
+
+        if(qual == 'min'){
+            imgdata = imgdata.resize(200,200,{fit : 'contain'})
+        }
+
+        imgdata
         .toBuffer()
         .then(buf =>{
             res.send(buf)
@@ -225,31 +143,40 @@ app.post('/account/get',isWhitelisted,async(req,res)=>{
             console.log("err",e);
             res.sendStatus(500);
         })
-    }
-    else if(isphoto && qual == 'min'){
-        sharp(filepath)
-        .resize(200,200,{fit : 'contain'})
-        .jpeg({mozjpeg : true})
-        .toBuffer()
-        .then(buf=>{
-            res.send(buf);
-            //console.log('min ',buf.length)
-        })
-        .catch((e)=>{
-            console.log(e);
-        })
-    }
-    else if((isAudio || isVideo) && qual == 'full'){
-        res.sendFile(filepath);
-    }
-    else {
+
+    } else if(isAudio || isVideo){
+        //send as partial data.
+        const range = req.headers.range;
+        if (!range) {
+            res.status(400).send("Requires Range header");
+        }
+        const fileStat = fs.statSync(filepath);
+        const videoSize = fileStat.size;
+        const CHUNK_SIZE = 10 ** 6;
+
+        const start = Number(range.replace(/\D/g, ""));
+        const end = Math.min(start + CHUNK_SIZE, videoSize - 1);
+        const contentLength = end - start + 1;
+        
+        const headers = {
+            "Content-Range": `bytes ${start}-${end}/${videoSize}`,
+            "Accept-Ranges": "bytes",
+            "Content-Length": contentLength,
+            "Content-Type": mime.getType(filepath.split('.').pop()),
+        };
+        res.writeHead(206, headers);
+        const videoStream = fs.createReadStream(filepath, { start, end });
+        videoStream.pipe(res);
+
+    } else if(iselse){
         //dunno what this is, send as raw text
         res.sendFile(filepath);
     }
+
 })
 
 //create folders | escape (../) vunlerability?
-app.post('/create/dir',isWhitelisted,async(req,res)=>{
+app.post('/create/dir',checkjwt,isWhitelisted,async(req,res)=>{
     const base = await getRequestDirectory(req);
     const reqPath = path.join(base,req.body.name);
     const pathexists = fs.existsSync(reqPath);
@@ -268,7 +195,7 @@ app.post('/create/dir',isWhitelisted,async(req,res)=>{
 })
 
 
-app.post('/account/list',isWhitelisted,async (req,res)=>{
+app.post('/account/list',checkjwt,isWhitelisted,async (req,res)=>{
     //req.params.path
     //listDirectory,getprimarydir
     const dirpath = await getRequestDirectory(req);
@@ -278,8 +205,16 @@ app.post('/account/list',isWhitelisted,async (req,res)=>{
         
         const alldirs = data.filter(item => item.isDirectory());
         const allfiles = data.filter(item =>!item.isDirectory());
+        //jpgs have extra
+
         const filesStats = allfiles.map((item)=>{
-            const stats = fs.statSync(path.join(dirpath,item.name));
+            let stats = fs.statSync(path.join(dirpath,item.name));;
+            const rimg = new RegExp(/\.((jpg)|(jpeg))/,'i');
+            if(rimg.test(item.name)){
+                const morestats = exif.parseSync(path.join(dirpath,item.name));
+                stats = {...stats,...morestats}
+            }
+
             return {
                 name : item.name,
                 ...stats
@@ -292,24 +227,21 @@ app.post('/account/list',isWhitelisted,async (req,res)=>{
     })
 });
 
-app.get('/account/listsecret',isWhitelisted,(req,res)=>{
+app.get('/account/listsecret',checkjwt,isWhitelisted,(req,res)=>{
 
 });
 
 //before we listen we must make sure everything is in order
 async function InitialCheck(){
-    //initialize root database dir path
-    const rrr = await rootDirectory;
-    
     //initialize the tables 
-    await db.schema.hasTable('whitelist').then(async (exists)=>{
+    const check1 = db.schema.hasTable('Users').then(async (exists)=>{
         if(!exists){
             //create the whitelist table
-            await db.schema.createTable('whitelist',(table)=>{
+            await db.schema.createTable('Users',(table)=>{
                 table.increments();
-                table.string('gmail');
+                table.string('username');
+                table.string('email').unique().primary();
                 table.string('password');
-                table.string('token');
                 table.json('favorite');
                 table.json('secretfavorite');
                 table.json('shared');
@@ -318,13 +250,25 @@ async function InitialCheck(){
                 table.string('maindrive');
                 table.string('secretdrive');
                 table.string('trashdrive');
+                table.binary('ProfilePicture');
+                table.json('accessTokens');
+                table.json('refreshTokens');
                 table.boolean('admin');
+                table.boolean('whitelist');
                 //secret, trash will be actual folders
 
             }).then(()=>{console.log("initialized table")})
             //password : 'admin',
-            await db('whitelist').insert([{gmail : 'admin',admin : true}]).then(()=>{
+            await db('Users').insert([{
+                username: 'admin',
+                email : 'admin',
+                password: bcryypt.hashSync('admin',10),
+                admin : true,
+                whitelist : true
+            }]).then(async ()=>{
+                await ensureDirectories('admin');
                 console.log('inserted user admin password admin. Change at /admin')
+                
             })
             //default user is admin
             //add users through admin panel
@@ -332,7 +276,7 @@ async function InitialCheck(){
         }
     })
     //set the base directory to be ./FileSystem
-    await db.schema.hasTable('meta').then(async (exists)=>{
+    const check2 = db.schema.hasTable('meta').then(async (exists)=>{
         if(!exists){
             await db.schema.createTable('meta',(table)=>{
                 table.string('directory')
@@ -344,8 +288,9 @@ async function InitialCheck(){
     })
     
     
-    //Everything has been loaded
-    console.log("database loaded. Change settings at Localhost/admin")
+    await Promise.allSettled([check1,check2,rootDirectory])
+    .then(()=>{console.log("finished Server checks")})
+    .catch(()=>{console.error("couldn't finish checks, aborting...")})
     //host the server
     app.listen(port,()=>{
         console.log(`listening on localhost:${port}/`);

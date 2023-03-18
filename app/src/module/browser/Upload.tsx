@@ -7,7 +7,7 @@ import path from 'path';
 
 export function Upload(){
     const [Files,SetFiles] = useState<Array<File>>([]);
-    const {Server} = useContext(AxiosContext)
+    const {upload} = useContext(AxiosContext)
     const [popup,setPopup] = useState(false);
     
     //make pop up screen
@@ -19,21 +19,27 @@ export function Upload(){
             //console.log(Files[i].name)
             form.append('file'+i,Files[i],Files[i].name);
         }
-        Server.upload(form)
-        .then(()=>{
-            console.log("posted");
-            SetFiles([]);
-        }).catch(()=>{
-            console.log("unsuccessful upload");
-        });
+        upload(form)
+        .then((res)=>{
+            if(res.status){
+                console.log("posted");
+                SetFiles([]);
+            }else [
+                console.log("unsussessful upload")
+            ]
+        })
 
     }
     const FileChange = (event : React.ChangeEvent<HTMLInputElement>)=>{
         const afilelist = event.target.files
+        console.log("input ",afilelist);
         if(!afilelist) return;
+        const newfilelist = [];
         for(let i = 0; i < afilelist?.length;i++){
-            SetFiles([...Files,afilelist[i]]);
+            newfilelist.push(afilelist[i])
         }
+
+        SetFiles([...Files,...newfilelist]);
         event.currentTarget.value = '';
     }
 
@@ -53,7 +59,7 @@ export function Upload(){
     return <div className='UploadContainer'>
         <div className='UploadPanel'>
             <div className = "FileDisplay">{...ToObject(Files)}</div>
-            <input type='file' onChange={FileChange}></input>
+            <input type='file' onChange={FileChange} multiple></input>
             <button onClick={()=>{setPopup(true)}}>Upload</button>
             {popup ? <FileExplorer onSubmit = {UploadHandler} onExit = {()=>{setPopup(false)}}></FileExplorer> : null}
         </div>
@@ -71,17 +77,19 @@ type FileExplorer = {
 export function FileExplorer(props : FileExplorer){
     let [buildDir,setBuildDir] = useState<string>('/');
     const [DirObj,setDirObj] = useState<Array<{[name : string] : any}>>([]);
-    const {Server} = useContext(AxiosContext);
+    const {dir,mkdir} = useContext(AxiosContext);
     const foldername = useRef<HTMLInputElement>(null);
 
     useEffect(()=>{
         
-        Server.dir(buildDir).then((data)=>{
+        dir(buildDir).then((res)=>{
             //console.log(data);
             //res.send({"directories" : alldirs,"files" : allfiles});
             //alldirs => [ {name : string}]
             //console.log("dirs are ",data.data.directories);
-            setDirObj(data.data.directories);
+            if(res.status && res.data){
+                setDirObj(res.data.directories);
+            }
         });
     },[buildDir])
 
@@ -105,9 +113,13 @@ export function FileExplorer(props : FileExplorer){
     const createFolder = ()=>{
         const newname = foldername.current?.value;
         foldername.current!.value = "";
-        if(newname) Server.mkdir(buildDir,newname);
+        if(newname) mkdir(buildDir,newname);
         //cause the dir to refresh
-        Server.dir(buildDir).then(data=>setDirObj(data.data.directories));
+        dir(buildDir).then(res=>{
+            if(res.status){
+                setDirObj(res.data.directories)
+            }
+        });
     }
 
     return (

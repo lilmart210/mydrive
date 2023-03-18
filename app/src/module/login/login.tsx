@@ -15,8 +15,14 @@ export function Login(props? : {[setAuth : string] : (abool : boolean)=>void}) {
     const [formstate,setFormstate] = useState<{[name : string] : any}>({});
     const [message,setMessage] = useState("");
     const nav = useNavigate();
-    const {Server} = useContext(AxiosContext);
+    const {login,getAuth} = useContext(AxiosContext);
     
+
+    useEffect(()=>{
+        if(getAuth()){
+            nav('/home')
+        }
+    },[])
 
     const changeHandler = (event :FormEvent<HTMLInputElement>)=>{
         event.currentTarget;
@@ -29,13 +35,13 @@ export function Login(props? : {[setAuth : string] : (abool : boolean)=>void}) {
 
     const submit = ()=>{
 
-        Server.login(formstate)
+        login(formstate)
         .then(data => {
-            const stat = data.status == 200;
-            if(stat){
+            if(data.status){
                 nav('/home');
+                setMessage(data.msg)
             }else {
-                setMessage("Failed to login");
+                setMessage(data.msg);
             }
         })
         .catch(()=>{});
@@ -46,53 +52,31 @@ export function Login(props? : {[setAuth : string] : (abool : boolean)=>void}) {
         <div className = "LoginPage">
             <div className = "LoginPanel">
                 <label>{message}</label>
-                <label>
-                    gmail
-                </label>
+                <h1>Login Page</h1>
                 <input
-                    name = 'gmail'
+                    placeholder='Email'
+                    name = 'email'
                     type = 'email'
                     onChange={changeHandler}
                 />
-                <label>password</label>
-                <input name = 'password' type={'password'} onChange={changeHandler}></input>
-                <button onClick={submit}>Submit</button>
-                <button onClick={()=>{nav('/signup')}}>signup</button>
+                <input placeholder='Password' name = 'password' type={'password'} onChange={changeHandler}></input>
+                <div className='Panel'>
+                    <button onClick={submit}>Submit</button>
+                    <button onClick={()=>{nav('/signup')}}>signup</button>
+                </div>
             </div>
             
         </div>
     )
 }
 
-//if authenticated, outlet to the desired place
-export function MyProtected(props? : {[auth : string] : boolean}) {
-    let [isAuth, setAuth] = useState(props?.auth || false);
-    const {Server} = useContext(AxiosContext);
-    const nav = useNavigate();
-    
-    //try to authenticate first
-    //otherwise navigate to homepage
-    useEffect(()=>{
-        //check to see if valid session token exists in session cookie
-        //by asking the server if we are logged in
-            //await Server.logout();
-        Server.login()
-        .then(data =>setAuth(data.status == 200))
-        .catch(()=>{});
-        
-    },[isAuth])
-
-    return Server.isAuthenticated ? <Outlet/> : <Login></Login>;
-    //return isAuth ? <Navigate to = '/home' replace/> : <Navigate to = '/login' replace/>
-}
-
 export function Logout(){
-    const {Server} = useContext(AxiosContext);
+    const {logout} = useContext(AxiosContext);
     const nav = useNavigate();
 
     useEffect(()=>{
-        Server.logout().then(()=>{
-            nav('/home');
+        logout().then((out)=>{
+            out.status && nav('/login');
         });
     },[])
 
@@ -101,15 +85,13 @@ export function Logout(){
 
 
 export function AdminProtected(props : {[name : string] : any}){
-    const {Server} = useContext(AxiosContext);
-    const [isAdmin,setAdmin] = useState(false);
+    const {RequestAdmin, isAdmin,isAuthenticated} = useContext(AxiosContext);
     const nav = useNavigate();
 
     useEffect(()=>{
-        Server.RequestAdmin()
+        RequestAdmin()
         .then(()=>{
-            const adminAuth = Server.isAdmin && Server.isAuthenticated
-            setAdmin(adminAuth);
+            const adminAuth = isAdmin && isAuthenticated
             adminAuth ? nav('/admin') : nav('/');
         })
         .catch(()=>{});
@@ -120,18 +102,8 @@ export function AdminProtected(props : {[name : string] : any}){
     return isAdmin ? <Outlet/> : <label>You are not Allowed</label>
 }
 
-//React.HTMLAttributes<HTMLDivElement>.style?: React.CSSProperties |
-
-const signupstyle : React.CSSProperties = {
-    display : 'flex',
-    flexDirection : 'column',
-    maxWidth : '30vw',
-    maxHeight : '60 vh',
-
-}
-
 export function SignUp(){
-    const {Server} = useContext(AxiosContext);
+    const {Signup} = useContext(AxiosContext);
     const [msgResp,setResp] = useState('');
     const [data,setdata] = useState<{[name : string] : any}>({});
     const nav = useNavigate();
@@ -151,27 +123,29 @@ export function SignUp(){
         !isequal && data.password && setResp("Password not the same")
         !isequal && !data.password && setResp("Invalid Password")
 
-        isequal && Server.Signup(data)
+        isequal && Signup(data)
         .then((rep)=>{
             if(rep.status == 200){
-                nav('/home');
+                nav('/login')
             }else {
-                setResp('You Are Not Authorized')
+                setResp(rep.msg)
             }
         })
         .catch(()=>{});
     }
 
     return (
-        <div>
-            <div style={signupstyle}>
-                <label>Sign up</label>
+        <div className = "LoginPage">
+            <div className='LoginPanel'>
+                <h1>Sign up</h1>
                 <label>{msgResp}</label>
-                <input onChange={change} name = 'gmail' type={'email'} placeholder ='email'></input>
+                <input onChange={change} name = 'email' type={'email'} placeholder ='email'></input>
                 <input onChange={change} name = 'password' type={'password'} placeholder = 'password'/>
                 <input onChange={change} name = 'confirm' type={'password'} placeholder = 'Confirm Password'/>
-                <button onClick={click}>Submit</button>
-                <button onClick={()=>nav('/')}>back</button>
+                <div className='Panel'>
+                    <button onClick={click}>Submit</button>
+                    <button onClick={()=>nav('/')}>back</button>
+                </div>
             </div>
         </div>
     )

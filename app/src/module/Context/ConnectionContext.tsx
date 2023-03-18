@@ -1,71 +1,47 @@
 
-import { createContext } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import axios, { AxiosResponse } from 'axios';
+import { Navigate, Outlet, useNavigate } from "react-router-dom";
 
 
-const delim = "haha";
+const delim = "%";
 
-type ServerType = {
-    post : (to : string, data : {[name : string] : any} | any,opts? : {[name : string] : any},replace? : boolean) => Promise<any>,
-    get : (to : string,opts : {[name : string] : any})=>Promise<any>,
-    logout : () => Promise<any>,
-    login : (adata? : any)=> Promise<any>,
-    isAuthenticated : boolean,
-    upload : (data : {[name : string] : any})=>Promise<any>,
-    address : string,
-    credentials : {[name : string] : any},
-    dir : (apath : string) => Promise<any>,
-    mkdir : (apath : string, aname : string) => Promise<any>,
-    getImg : (apath : string, aname : string,compression : string) => Promise<any>,
-    toNetworkImage : (apath : string, aname : string) => string,
-    controller : AbortController,
-    InitController : Function,
-    RequestAdmin : ()=> Promise<any>,
-    isAdmin : boolean,
-    Signup : (adata : {[name : string] : any})=>Promise<any>,
-    getUsers : () => Promise<any>,
-    addUser : (aname : string) => Promise<any>,
-    setDirectory : (apath : string) => Promise<any>,
-    getRoot : ()=> Promise<any>
-} & Function
+const AuthEvent = new Event("AuthEvent");
 
-type MyProvider = {
-    Server : ServerType
+type AnyDict = {
+    [name : string] : any
 }
 
 function Server() {
-    function cmd(){
-        console.log(headers);
-        
-    }
-    cmd.controller = new AbortController();
-    cmd.isAdmin = false;
-
-    cmd.RequestAdmin = async ()=>{
-        return cmd.post('/admin')
-        .then((res : AxiosResponse<any>)=>{
-            if(res.status == 200){
-                cmd.isAdmin = true;
-            }else {
-                cmd.isAdmin = false;
-            }
-        }).catch(()=>{
-            cmd.isAdmin = false;
-        })
-    }
-
-    cmd.InitController = function(){
-        const controller = new AbortController();
-        cmd.controller = controller;
-    }
-
-
     const envUrl = import.meta.env.VITE_ADDRESS;
+    const envAuthUrl = import.meta.env.VITE_AUTH_ADDRESS;
 
-    if(!envUrl) console.error('No environment variable Address, defaulting to localhost:8060')
-    console.log(envUrl);
+    if(!envUrl) console.warn('No environment variable Address, defaulting to localhost:8060')
+    if(!envAuthUrl) console.warn('No Environmental variable addres for auth server, defaulting to localhost:7765');
     //VITE_ADDRESS=http://localhost:8060
     const serverurl = envUrl ? envUrl : 'http://localhost:8060';
+    const authurl = envAuthUrl ? envAuthUrl : 'http://localhost:7765';
+
+    let authListeners : Function[] = []
+    let controller = new AbortController();
+    let isAdmin = false;
+    let headers : any = null;
+    let isAuthenticated = false;
+    let MetaData : {
+        accessToken : string | null,
+        refreshToken : string | null,
+        email : string | null,
+    } = {
+        accessToken : null,
+        refreshToken : null,
+        email : null
+    };
+
+    sessionStorage.setItem('Meta',JSON.stringify(MetaData));
+    const MetaMem = sessionStorage.getItem('Meta');
+    if(MetaMem){
+        MetaData = JSON.parse(MetaMem);
+    }
 
     const options = {
         withCredentials : true,
@@ -73,117 +49,215 @@ function Server() {
             return status >=200 && status <= 500;
         }
     }
-    let headers : any = null;
 
     axios.interceptors.response.use((config)=>{
         //ignore 404 errors
-        cmd.isAuthenticated = config.status == 200 && config.config.url != serverurl + '/logout';
-        cmd.isAuthenticated = cmd.isAuthenticated || config.status == 404;
+        //isAuthenticated = config.status == 200 && config.config.url != serverurl + '/logout';
+        //isAuthenticated = isAuthenticated || config.status == 404;
         headers = config.headers;
-
         return config;
     })
-    
 
-    cmd.credentials = options;
-    cmd.address = serverurl;
-    cmd.isAuthenticated = false;
-
-    cmd.upload = async(data : {[name : string] : any}) =>{
-        return cmd.post(
-            '/account/upload',
-            data,
-            {headers : {'Content-Type': `multipart/form-data; boundary=----arbitrary boundary`}},
-            true
-        );
-    }
-    cmd.get = async(to : string,opts : {[name : string] : any} = {})=>{
-        return axios.get(serverurl + to,{...options,...opts});
+    async function RequestAdmin(){
+        return post('/admin')
+        .then((res : AxiosResponse<any>)=>{
+            if(res.status == 200){
+                isAdmin = true;
+            }else {
+                isAdmin = false;
+            }
+        }).catch(()=>{
+            isAdmin = false;
+        })
     }
 
-    cmd.post = async (to : string,data : {[name : string] : any} | any = {},opts : {[name : string] : any} = {},replace = false) =>{
+    function InitController(){
+        controller = new AbortController();
+    }
+
+    async function get(to : string,opts : AnyDict = {},headers : AnyDict = {}){
+        const auth = {headers : {"authorization" : `Bearer ${MetaData.accessToken}`,...headers}};
+        return axios.get(to,{...options,...auth,...opts});
+    }
+
+    async function post(to : string,data : AnyDict | any = {},opts : AnyDict = {},head : AnyDict = {},replace : boolean = false){
         //console.log(to,data,opts,replace);
-        return axios.post(serverurl + to,
+        const auth = {headers : {"authorization" : `Bearer ${MetaData.accessToken}`,...head}};
+        return axios.post(to,
             replace ? data : {
                 ...data
             },
-            {...options,...opts})
-
+            {...options,...auth,...opts}
+        )
+    }
+    async function remove(to : string,opts : AnyDict = {}){
+        const auth = {headers : {"authorization" : `Bearer ${MetaData.accessToken}`}};
+        return axios.delete(
+            to,
+            {
+                ...options,
+                ...auth,
+                ...opts
+            }
+        )
     }
     //response type : arraybuffer, blob, document, json, stream, text
-    cmd.logout = async ()=>{
-        return axios.post(serverurl + '/logout',{},options);
+    async function logout(){
+        return remove(authurl + '/logout')
+        .then(()=>{
+            sessionStorage.removeItem('Meta')
+            isAuthenticated = false;
+            return {status : true, msg : "logged out"}
+        })
+        .catch(()=>{return {status : false, msg : "unexpected error"}});
     }
 
-    cmd.login = async (adata : any)=>{
-        return cmd.post('/login',adata);
+    async function login(adata : any){
+        return post(authurl + '/login',adata)
+        .then((msg)=>{
+            if(msg.status == 200){
+                MetaData = msg.data
+                sessionStorage.setItem('Meta',JSON.stringify(MetaData));
+                isAuthenticated = true;
+                return {status : true, msg : "logged in"};
+            }else {
+                return {status : false, msg : "try again"}
+            }
+        })
+        .catch(()=>{return {status : false,msg : "unexpected failure"}});
         //return axios.post(serverurl + '/login',{...adata},options);
     }
-    cmd.Signup = async (adata : {[name : string] : any}) => {
-        return cmd.post('/signup',adata);
+
+    async function Signup(adata : {[name : string] : any}){
+        return post(authurl + '/register',adata)
+        .then((res)=>{return {status : res.status,msg : res.statusText}});
     }
 
+    async function upload(data : {[name : string] : any}){
+        return post(
+            serverurl + '/account/upload',
+            data,
+            {'Content-Type': `multipart/form-data; boundary=----arbitrary boundary`},
+            {'Content-Type': `multipart/form-data; boundary=----arbitrary boundary`},
+            true
+        )
+        .then(()=>{return {status : true,msg : "uploaded"}})
+        .catch(()=>{return {status : false,msg : "failed to upload"}});
+    }
 
-    cmd.dir = async (apath : string = '/') =>{
-        return cmd.post('/account/list',{path : apath});
+    async function dir(apath : string = '/'){
+        return post(serverurl + '/account/list',{path : apath})
+        .then((info)=>{return {status : true, msg : "fetched",data : info.data}})
+        .catch(()=>{return {status : false,msg : "failed to fetch",data : null}});
     }
-    cmd.mkdir = async (apath : string, aname : string) =>{
-        return cmd.post('/create/dir',{path : apath,name : aname})
+
+    async function mkdir(apath : string, aname : string){
+        return post(serverurl + '/create/dir',{path : apath,name : aname})
+        .then(()=>{return {status : true,msg : "created"}})
+        .catch(()=>{return {status : false,msg : "failed to create"}})
     }
-    cmd.getImg = async(apath : string, aname : string,compression : string) =>{
-        
-        return cmd.post(
-            '/account/get',
+    async function getImg(apath : string, aname : string,compression : string){
+        return post(
+            serverurl + '/account/get',
             {
             path : apath,
             name : aname,
             compression : compression
         },
-        {responseType : 'blob',signal : cmd.controller.signal});
-        //return cmd.get(apath.replaceAll('/',delim) + delim + aname);
+        {responseType : 'blob',signal : controller.signal})
+        .then((info)=>{return {status : true,msg : "fetched",data : info.data}})
+        .catch(()=>{return {status : false,msg : "failed to fetch",data : null}});
     }
 
-    cmd.setDirectory = async (apath : string) =>{
-        return cmd.post(
-            '/admin/setDirectory',
+    function toNetworkSource(apath : string,aname : string,compression : string){
+        ///image/get/user/:token/dir/:dir/name/:path
+        const base = serverurl + '/image/get/'
+        const imgurl = apath.replaceAll('/',"!aasd!aa")
+
+        const newurl = `${base}user/${MetaData.accessToken}/dir/${imgurl}/name/${aname}/comp/${compression}`;
+        return newurl;
+    }
+
+    async function setDirectory(apath : string) {
+        return post(
+            serverurl + '/admin/setDirectory',
             {path : apath}
         )
+        .then(()=>{return {status : true,msg : "set directory"}})
+        .catch(()=>{return {status : false,msg : "failed to set directory"}})
     }
 
-    cmd.getUsers = async ()=>{
-        return cmd.get(
-            '/admin/whitelist'
+    async function getUsers(){
+        return get(
+            serverurl + '/admin/whitelist'
         )
+        .then((info)=>{return {status : true,msg : "get users",data : info.data}})
+        .catch(()=>{return {status : false,msg : "failed to get users"}})
     }
     
-    cmd.addUser = async (aname : string)=>{
-        return cmd.post(
-            '/admin/newUser',
+    async function addUser(aname : string){
+        return post(
+            serverurl + '/admin/newUser',
             {gmail : aname}
         )
+        .then(()=>{return {status : true,msg : "added user"}})
+        .catch(()=>{return {status : false,msg : "failed to add user"}})
     }
 
-    cmd.getRoot = async ()=>{
-        return cmd.get('/admin/rootpath');
+    async function getRoot(){
+        return get(serverurl + '/admin/rootpath')
+        .then((info)=>{return {status : true,msg : "root user",data : info.data}})
+        .catch(()=>{return {status :false, msg : "failed to get root user"}});
     }
 
-    cmd.toNetworkImage = (apath : string,aname : string)=>{
-        const base = serverurl + '/account/get/'
-        const imgurl = apath.replaceAll('/',delim) + delim + aname
-        return base + imgurl
+    function getAuth(){
+        return isAuthenticated
     }
 
-    return cmd;
+    //return cmd;
+    return {
+        toNetworkSource,
+        getRoot,
+        addUser,
+        getUsers,
+        setDirectory,
+        getImg,
+        mkdir,
+        dir,
+        login,
+        logout,
+        upload,
+        RequestAdmin,
+        InitController,
+        Signup,
+        isAdmin,
+        isAuthenticated,
+        controller,
+        getAuth,
+    }
 }
 
+const ServerConnection = Server();
 
-export const AxiosContext = createContext<MyProvider>({Server : Server()});
+export const AxiosContext = createContext(ServerConnection);
 
 export function AxiosProvider(props : React.PropsWithChildren){
+    //can throw a loading screen or something here.
     return (
-    <AxiosContext.Provider value = {{Server : Server()}}>
+    <AxiosContext.Provider value = {ServerConnection}>
         {props.children}
     </AxiosContext.Provider>
+    )
+}
+
+export function ProtectView(){
+    const {getAuth} = useContext(AxiosContext);
+    const [isauth,setauth] = useState(getAuth());
+    useEffect(()=>{
+        //console.log("authe ",isauth);
+    },[])
+    return (
+        isauth ? <Outlet/> : <Navigate to ='/login' replace={true}/>
     )
 }
 

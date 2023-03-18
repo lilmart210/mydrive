@@ -9,7 +9,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 
 export function Home(){
     const nav = useNavigate();
-    const {Server} = useContext(AxiosContext);
+    const {} = useContext(AxiosContext);
     
     const NavToProfile = ()=>{
         nav('/profile');
