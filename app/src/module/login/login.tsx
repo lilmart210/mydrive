@@ -85,21 +85,26 @@ export function Logout(){
 
 
 export function AdminProtected(props : {[name : string] : any}){
-    const {RequestAdmin, isAdmin,isAuthenticated} = useContext(AxiosContext);
+    const {RequestAdmin,isAdmin} = useContext(AxiosContext);
+    const [anAdmin,setAdmin] = useState(isAdmin);
     const nav = useNavigate();
 
     useEffect(()=>{
         RequestAdmin()
-        .then(()=>{
-            const adminAuth = isAdmin && isAuthenticated
-            adminAuth ? nav('/admin') : nav('/');
+        .then((resp)=>{
+            setAdmin(resp.status);
         })
-        .catch(()=>{});
 
     },[])
 
 
-    return isAdmin ? <Outlet/> : <label>You are not Allowed</label>
+    return (
+        <>
+            {!anAdmin && <h1>Checking Admin</h1>}
+            {anAdmin ? <Outlet/> : <h1>You are not allowed here <button onClick={()=>{nav('/home')}}>home</button></h1>}
+        </>
+        
+    )
 }
 
 export function SignUp(){

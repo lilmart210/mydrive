@@ -139,7 +139,7 @@ const isWhitelisted  = async (req,res,next)=>{
 }
 
 const isAdmin = async (req,res,next)=>{
-    if(req.admin){
+    if(req.meta.admin){
         next()
     }else {
         res.status(403).send("Not An Admin");

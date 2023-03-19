@@ -59,15 +59,18 @@ function Server() {
     })
 
     async function RequestAdmin(){
-        return post('/admin')
+        return post(serverurl + '/admin')
         .then((res : AxiosResponse<any>)=>{
             if(res.status == 200){
                 isAdmin = true;
+                return {status : true}
             }else {
                 isAdmin = false;
+                return {status : false}
             }
         }).catch(()=>{
             isAdmin = false;
+            return {status : false}
         })
     }
 
@@ -186,7 +189,15 @@ function Server() {
         .then(()=>{return {status : true,msg : "set directory"}})
         .catch(()=>{return {status : false,msg : "failed to set directory"}})
     }
-
+    async function getMeta(){
+        return get(
+            serverurl + '/admin/tables'
+        ).then((data)=>{
+            return {status : true, data : data.data}
+        }).catch(()=>{
+            return {status : false, data : []}
+        })
+    }
     async function getUsers(){
         return get(
             serverurl + '/admin/whitelist'
@@ -234,6 +245,7 @@ function Server() {
         isAuthenticated,
         controller,
         getAuth,
+        getMeta,
     }
 }
 

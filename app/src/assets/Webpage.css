@@ -364,6 +364,25 @@ video {
 .stack{
   background-image: url('./play.svg');
   background-size: cover;
+}
 
+.Mygrid {
+  text-align: center center;
+  display: flex;
+  height : min-content;
+  flex-direction: column;
+}
 
+.Mygrid > div{
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+}
+.Mygrid input {
+  height : 1rem;
+}
+
+.bigger {
+  height : 80%;
 }

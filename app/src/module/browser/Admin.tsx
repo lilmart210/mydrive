@@ -1,33 +1,31 @@
 
 import { AxiosContext } from "../Context/ConnectionContext"
-import { useState,useContext, useEffect, FormEvent} from "react"
+import { useState,useContext, useEffect, FormEvent, useRef} from "react"
 import { useNavigate } from "react-router-dom"
 
 //admin only panel
 export function AdminPanel(){
     const nav = useNavigate();
-    const {Server} = useContext(AxiosContext);
+    const {getMeta} = useContext(AxiosContext);
+
     const [users, setUsers] = useState<Array<{[name : string] : any}>>([]);
     const [formvalue,setform] = useState<{[name : string] : any}>({});
     const [RootDirectory,setRoot] = useState('');
 
-    //need to be able to edit
-    const refreshUserlist = ()=>{
-        Server.getUsers()
-        .then((users)=>{
-            setUsers(users.data);
-        })
-        .catch(()=>{})
-    }
+    type aUser = {admin? : string,email? : string,username? : string,whitelist? : string};
+    const [init,setInit] = useState<Array<aUser>>([])
+    const selRef = useRef<HTMLSelectElement>(null);
+    const [selUser,setUser] = useState<aUser | undefined>({})
+
     useEffect(()=>{
-        refreshUserlist();
-
-        Server.getRoot()
-        .then(apath=>{
-            setRoot(apath.data)
+        getMeta()
+        .then((data)=>{
+            //admin email usernam whitelist
+            if(data.status){
+                console.log(data.data); 
+                setInit(data.data)
+            }
         })
-        .catch(()=>{})
-
     },[])
 
     const change = (e : FormEvent<HTMLInputElement>) => {
@@ -41,45 +39,46 @@ export function AdminPanel(){
     }
 
     const submitNewUser = () => {
-        Server.addUser(formvalue.user)
-        .then(()=>{
-            refreshUserlist();
-        })
-        .catch(()=>{})
 
     }
 
-    return (
-        <div>
-            <button onClick={()=>{nav('/home')}}>back</button>
+    function editUser(){
+        const targ = selRef.current?.value;
+        const userdata = init.find((item)=>item.email == targ)
+        setUser(userdata);
+    }
+    function saveall(){
+        
+    }
 
-            <div>
-                <label>Absolute File Path</label>
-                <input placeholder={RootDirectory} onChange={change}></input>
-                <button>Submit DirPath</button>
+    return (
+        <div className = "LoginPage">
+            <div className='LoginPanel bigger'>
+                <h1>Form Data</h1>
+                
+                <button onClick={()=>{nav('/home')}}>back</button>
+                <select name = "updates" ref={selRef}>
+                    {
+                        init.map((item : any,i)=>{
+                            return <option key = {i} value = {item.email}>
+                                {item.email}
+                            </option>
+                        })
+                    }
+                </select>
+                
+                <button onClick={editUser} >get</button>
+                {
+                    selUser?.username && 
+                    <div className={'Mygrid'}>
+                        <div><p>username</p><input type = {'text'} defaultValue={selUser.username}></input></div>
+                        <div><p>email</p><input type = {'email'} defaultValue={selUser.email}></input></div>
+                        <div><p>admin</p><input type ={'checkbox'}defaultValue={selUser.admin}></input></div>
+                        <div><p>whitelist</p><input type={'checkbox'} defaultValue={selUser.whitelist}></input></div>
+                    </div>
+                }
+                <button onClick={saveall}>save</button>
             </div>
-            <div>
-                <table>
-                    <thead>
-                        <tr>
-                            <td>Username</td>
-                            <td>Password</td>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {
-                            users.map((item : {[name : string] : any},i)=>
-                            <tr key = {i}>
-                                <td>{item.gmail}</td>
-                                <td>{item.password}</td>
-                            </tr>
-                            )
-                        }
-                    </tbody>
-                </table>
-            </div>
-            <input name = 'user' onChange = {change} placeholder="New User Name"></input>
-            <button onClick={submitNewUser}>Update</button>
         </div>
     )
 }

@@ -51,6 +51,17 @@ app.post('/admin',checkjwt,isWhitelisted,isAdmin,(req,res)=>{
     res.sendStatus(200);
 })
 
+app.get("/admin/tables",checkjwt,isWhitelisted,isAdmin,async(req,res)=>{
+    db('Users')
+    .select('whitelist','email','username','admin')
+    .then(rows=>{
+        res.status(200).json(rows);
+    })
+    .catch(()=>{
+        res.status(500);
+    });
+})
+
 app.get('/admin/whitelist',checkjwt,isWhitelisted,isAdmin,(req,res)=>{
     db('Users')
     .select('*')
