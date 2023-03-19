@@ -1,7 +1,7 @@
 import {useEffect,useState,useContext,useRef} from 'react'
 import { AxiosContext } from '../Context/ConnectionContext';
 import loadsvg from '../../assets/load.svg'
-import playbutton from '../../assets/play.svg'
+import play from '../../assets/play.svg'
 
 import path, { isAbsolute } from 'path';
 import * as mime from 'mime';
@@ -113,7 +113,8 @@ export function MediaDisplay(props : MediaDisplay = {quality : 'min'}){
             {
                 rimg.test(getName()) && <img src = {NetSRC} ref = {imageRef} alt = "Missing Source"></img> ||
 
-                rvideo.test(getName()) && !props.expand && <video src={NetSRC} ref = {vidRef}></video> ||
+                rvideo.test(getName()) && !props.expand && <div className="Item File Media stack"><video src={NetSRC} ref = {vidRef}/>
+                </div> ||
                 rvideo.test(getName()) && props.expand && <video src={NetSRC} ref = {vidRef} controls></video> ||
 
                 raudio.test(getName()) && !props.expand && <audio  src = {NetSRC}ref = {audRef}></audio> ||

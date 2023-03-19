@@ -150,7 +150,8 @@ app.get('/image/get/user/:token/dir/:dir/name/:name/comp/:compression',checkjwt,
         //range: 'bytes=3604480-4194303',
         //range: 'bytes=3604480-',
         //range: 'bytes=0-'
-        const vidpath = "C:/Users/mrmar/OneDrive/Desktop/mydrive/FileSystem/admin92668751/Citrus(MarcusWatson) - Discord 2022-03-25 00-01-50.mp4";
+        ///const vidpath = "C:/Users/mrmar/OneDrive/Desktop/mydrive/FileSystem/admin92668751/Citrus(MarcusWatson) - Discord 2022-03-25 00-01-50.mp4";
+        const vidpath = filepath;
         //send as partial data.
         let range = req.headers.range;
         const fileStat = fs.statSync(vidpath);
