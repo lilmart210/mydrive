@@ -145,29 +145,52 @@ app.get('/image/get/user/:token/dir/:dir/name/:name/comp/:compression',checkjwt,
         })
 
     } else if(isAudio || isVideo){
+        //console.log(req.headers);
+        //res.sendFile(filepath);
+        //range: 'bytes=3604480-4194303',
+        //range: 'bytes=3604480-',
+        //range: 'bytes=0-'
+        const vidpath = "C:/Users/mrmar/OneDrive/Desktop/mydrive/FileSystem/admin92668751/Citrus(MarcusWatson) - Discord 2022-03-25 00-01-50.mp4";
         //send as partial data.
-        const range = req.headers.range;
-        if (!range) {
-            res.status(400).send("Requires Range header");
-        }
-        const fileStat = fs.statSync(filepath);
+        let range = req.headers.range;
+        const fileStat = fs.statSync(vidpath);
         const videoSize = fileStat.size;
         const CHUNK_SIZE = 10 ** 6;
-
-        const start = Number(range.replace(/\D/g, ""));
-        const end = Math.min(start + CHUNK_SIZE, videoSize - 1);
-        const contentLength = end - start + 1;
-        
-        const headers = {
-            "Content-Range": `bytes ${start}-${end}/${videoSize}`,
-            "Accept-Ranges": "bytes",
-            "Content-Length": contentLength,
-            "Content-Type": mime.getType(filepath.split('.').pop()),
-        };
-        res.writeHead(206, headers);
-        const videoStream = fs.createReadStream(filepath, { start, end });
-        videoStream.pipe(res);
-
+        if (!range) {
+            const conttype = mime.getType(vidpath.split('.').pop())
+            
+            const headers = {
+                //"Content-Range": `bytes ${0}-${videoSize}/${videoSize}`,
+                //"Accept-Ranges": "bytes",
+                "Content-Length": videoSize,
+                "Content-Type": conttype,
+            };
+            
+            res.writeHead(200, headers);
+            const videoStream = fs.createReadStream(vidpath);
+            videoStream.pipe(res);
+        }else{    
+            const parts = range.replace('bytes=','').split('-');
+    
+            const start = parseInt(parts[0]);
+            const end = parts[1] != '' ? parseInt(parts[1]) : Math.min(start + CHUNK_SIZE, videoSize - 1);
+    
+            const contentLength = end - start + 1;
+            
+            const conttype = mime.getType(vidpath.split('.').pop())
+    
+            const headers = {
+                "Content-Range": `bytes ${start}-${end}/${videoSize}`,
+                "Accept-Ranges": "bytes",
+                "Content-Length": contentLength,
+                "Content-Type": conttype,
+            };
+            
+            res.set('Content-Type','video/mp4');
+            res.writeHead(206, headers);
+            const videoStream = fs.createReadStream(vidpath, { start, end });
+            videoStream.pipe(res);
+        }
     } else if(iselse){
         //dunno what this is, send as raw text
         res.sendFile(filepath);

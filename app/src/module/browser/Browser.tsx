@@ -1,8 +1,10 @@
 import {useEffect,useState,useContext,useRef} from 'react'
 import { AxiosContext } from '../Context/ConnectionContext';
 import loadsvg from '../../assets/load.svg'
+import playbutton from '../../assets/play.svg'
 
 import path, { isAbsolute } from 'path';
+import * as mime from 'mime';
 
 type MyImage = {
     DateTime : string | null,
@@ -95,15 +97,28 @@ export function MediaDisplay(props : MediaDisplay = {quality : 'min'}){
 
     //onclick
     function ClickHandler(e : Event){
+        if(rvideo.test(getName())){
+            console.log(NetSRC);
+        }
         props.onClick && props.onClick();
+    }
+
+    function gettype(aname : string = props.data?.name || "") : string{
+        const mi = props.data && mime.getType(aname)
+        return mi ? mi : "";
     }
 
     return (
         <div ref = {displayRef} className={`Item File Media ${props.noHighlight ? "NoHover" : ""} ${props.expand ? "Expand" : ""}`}>
             {
                 rimg.test(getName()) && <img src = {NetSRC} ref = {imageRef} alt = "Missing Source"></img> ||
-                rvideo.test(getName()) && <video src = {NetSRC} ref = {vidRef} controls>No Video</video> ||
-                raudio.test(getName()) && <audio src = {NetSRC} ref = {audRef}>No Audio</audio> ||
+
+                rvideo.test(getName()) && !props.expand && <video src={NetSRC} ref = {vidRef}></video> ||
+                rvideo.test(getName()) && props.expand && <video src={NetSRC} ref = {vidRef} controls></video> ||
+
+                raudio.test(getName()) && !props.expand && <audio  src = {NetSRC}ref = {audRef}></audio> ||
+                raudio.test(getName()) && props.expand && <audio  src = {NetSRC}ref = {audRef}></audio> ||
+
                 relse(getName()) && props.onClick && <img alt ={props.data?.name}/> ||
                 relse(getName()) && !props.onClick && <object data = {NetSRC} ref ={objRef} >Not Supported</object>
             }
@@ -217,7 +232,8 @@ export function Browser(){
                 SelectedContent &&
                 <div className='DisplayContent'>
                     <button onClick={CloseBigDisplay}>close</button>
-                    <MediaDisplay filedir={currentDir} data = {SelectedContent} quality = 'full' noHighlight = {true}/>
+                    <MediaDisplay filedir={currentDir} data = {SelectedContent}
+                     quality = 'full' noHighlight = {true} expand = {true}/>
                 </div>
             }
             <div className='Header'></div>
