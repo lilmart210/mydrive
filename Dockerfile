@@ -3,6 +3,10 @@
 FROM node:19-alpine
 
 
+ENV ACCESS_TOKEN_SECRET="SPIININ ON YOU"
+ENV REFRESH_TOKEN_SECRET="WHERE THE PROBLEM AT"
+
+
 WORKDIR /server
 
 COPY package*.json ./
@@ -10,6 +14,7 @@ COPY package*.json ./
 RUN mkdir database
 
 RUN npm install
+
 
 COPY *.js ./
 
