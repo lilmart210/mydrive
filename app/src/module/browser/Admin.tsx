@@ -6,10 +6,10 @@ import { useNavigate } from "react-router-dom"
 //admin only panel
 export function AdminPanel(){
     const nav = useNavigate();
-    const {getMeta} = useContext(AxiosContext);
+    const {getMeta,UpdateUserRecords} = useContext(AxiosContext);
 
     const [users, setUsers] = useState<Array<{[name : string] : any}>>([]);
-    const [formvalue,setform] = useState<{[name : string] : any}>({});
+    const [formvalue,setform] = useState<aUser>({});
     const [RootDirectory,setRoot] = useState('');
 
     type aUser = {admin? : string,email? : string,username? : string,whitelist? : string};
@@ -22,25 +22,10 @@ export function AdminPanel(){
         .then((data)=>{
             //admin email usernam whitelist
             if(data.status){
-                console.log(data.data); 
                 setInit(data.data)
             }
         })
     },[])
-
-    const change = (e : FormEvent<HTMLInputElement>) => {
-        const aname = e.currentTarget.name;
-        const aval = e.currentTarget.value;
-        const aform : {[name : string] : any} = {};
-        aform[aname] = aval;
-
-        setform({...formvalue,...aform});
-
-    }
-
-    const submitNewUser = () => {
-
-    }
 
     function editUser(){
         const targ = selRef.current?.value;
@@ -48,9 +33,25 @@ export function AdminPanel(){
         setUser(userdata);
     }
     function saveall(){
-        
+        console.log(formvalue,"form")
+        UpdateUserRecords({...formvalue,"email" : selUser?.email})
+        .then((resp)=>{
+            if(resp.status) nav('/home');
+        })
     }
+    function Changes(event : React.ChangeEvent<HTMLInputElement>){
+        const tg = event.currentTarget;
+        const aname = tg.name;
 
+        const avalue = tg.type =='checkbox' ? tg.value == 'on' : tg.value;
+        const pckg : {[name : string] : any} = {};
+        
+        pckg[aname] =  avalue;
+
+        setform({...formvalue,...pckg});
+        setUser({...selUser,...pckg});
+
+    }
     return (
         <div className = "LoginPage">
             <div className='LoginPanel bigger'>
@@ -71,10 +72,22 @@ export function AdminPanel(){
                 {
                     selUser?.username && 
                     <div className={'Mygrid'}>
-                        <div><p>username</p><input type = {'text'} defaultValue={selUser.username}></input></div>
-                        <div><p>email</p><input type = {'email'} defaultValue={selUser.email}></input></div>
-                        <div><p>admin</p><input type ={'checkbox'}defaultValue={selUser.admin}></input></div>
-                        <div><p>whitelist</p><input type={'checkbox'} defaultValue={selUser.whitelist}></input></div>
+                        <div>
+                            <p>username</p>
+                            <input onChange={Changes} name="username"type = {'text'} defaultValue={selUser.username}/>
+                        </div>
+                        <div>
+                            <p>email</p>
+                            <input onChange={Changes} name="email"type = {'email'} defaultValue={selUser.email}/>
+                        </div>
+                        <div>
+                            <p>admin</p>
+                            <input onChange={Changes} name="admin"type ={'checkbox'} defaultChecked={Boolean(selUser.admin)}/>
+                        </div>
+                        <div>
+                            <p>whitelist</p>
+                            <input onChange={Changes} name="whitelist"type={'checkbox'} defaultChecked={Boolean(selUser.whitelist)}/>
+                        </div>
                     </div>
                 }
                 <button onClick={saveall}>save</button>

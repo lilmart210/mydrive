@@ -11,6 +11,7 @@ import { AxiosContext,AxiosProvider,ProtectView } from './module/Context/Connect
 import { Upload } from './module/browser/Upload';
 import { Browser } from './module/browser/Browser';
 import { AdminPanel } from './module/browser/Admin';
+import { Profile } from './module/home/profile';
 
 //port number 5173
 
@@ -29,6 +30,7 @@ function App() {
             </Route>
             
             <Route path = '/logout' element = {<Logout></Logout>}/>
+            <Route path = '/profile' element = {<Profile></Profile>}/>
 
             <Route path = '/admin' element = {<AdminProtected></AdminProtected>}>
               <Route path = '/admin/' element = {<AdminPanel></AdminPanel>}></Route>

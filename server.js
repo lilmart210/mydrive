@@ -51,6 +51,43 @@ app.post('/admin',checkjwt,isWhitelisted,isAdmin,(req,res)=>{
     res.sendStatus(200);
 })
 
+app.post('/admin/userdata',checkjwt,isWhitelisted,isAdmin,(req,res)=>{
+    
+    const pckg = {}
+    if(req.body.whitelist != null) pckg.whitelist =  req.body.whitelist ? true : false;
+    if(req.body.admin != null) pckg.admin = req.body.admin
+    if(req.body.email == null) return res.sendStatus(403)
+    if(req.body.email != null) pckg.email = req.body.email;
+    db('Users')
+    .where({email : pckg.email})
+    .update(pckg)
+    .then(()=>res.sendStatus(200))
+    .catch(()=>res.sendStatus(500))
+});
+
+//implement a flag for passwords that increment based on current allowed tokens
+//example. Creation = 1; we can log out every token simply by increasing the 
+//creation value inside the token to some arbitrary number like 2; doing this will
+//disable any older logins and force the user to sign in manually in order to regain token/
+//refresh api access while still remaining stateless 
+app.post('/user/changepassword',checkjwt,isWhitelisted,(req,res)=>{
+    if(!req.body.password || !req.body.newPassword)return res.sendStatus(400);
+    //we have a password and old password
+    const newhash = bcryypt.hashSync(req.body.newPassword,10);
+    //verify the password
+    if(bcryypt.compareSync(req.body.password,req.meta.password)){
+        db('Users')
+        .select()
+        .where({email : req.meta.email})
+        .update({password : newhash})
+        .then(()=>res.sendStatus(200))
+        .catch(()=>res.sendStatus(500));
+    }else {
+        res.sendStatus(403);
+    }
+
+})
+
 app.get("/admin/tables",checkjwt,isWhitelisted,isAdmin,async(req,res)=>{
     db('Users')
     .select('whitelist','email','username','admin')

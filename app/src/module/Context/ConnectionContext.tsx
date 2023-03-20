@@ -150,8 +150,8 @@ function Server() {
 
     async function dir(apath : string = '/'){
         return post(serverurl + '/account/list',{path : apath})
-        .then((info)=>{return {status : true, msg : "fetched",data : info.data}})
-        .catch(()=>{return {status : false,msg : "failed to fetch",data : null}});
+        .then((info)=>{return {status : info.status == 200, msg : "fetched",data : info.data} })
+        .catch(()=>{return {status : false,msg : "failed to fetch",data : {}}});
     }
 
     async function mkdir(apath : string, aname : string){
@@ -221,6 +221,36 @@ function Server() {
         .catch(()=>{return {status :false, msg : "failed to get root user"}});
     }
 
+    async function UpdateUserRecords(data : AnyDict = {}){
+        return post(
+            serverurl + '/admin/userdata',
+            data
+            ).then((res)=>{
+                if(res.status == 200){
+                    return {status : true}
+                }else {
+                    return {status : false}
+                }
+            }).catch(()=>{
+                return {status : false}
+            })
+    }
+    
+    async function UpdatePassword(data : AnyDict = {}){
+        return post(
+            serverurl + '/user/changepassword',
+            data
+            ).then((res)=>{
+                if(res.status == 200){
+                    return {status : true}
+                }else {
+                    return {status : false}
+                }
+            }).catch(()=>{
+                return {status : false}
+            })
+    }
+
     function getAuth(){
         return isAuthenticated
     }
@@ -246,6 +276,8 @@ function Server() {
         controller,
         getAuth,
         getMeta,
+        UpdateUserRecords,
+        UpdatePassword
     }
 }
 
