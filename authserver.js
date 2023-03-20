@@ -19,8 +19,13 @@ const port = 7765;
 const {checkjwt,ensureDirectories} = require('./DatabaseFunctions')
 
 
+const corsorigins = ['http://localhost:5173']
+if(process.env.NEW_ORIGIN){
+    corsorigins.push(process.env.NEW_ORIGIN)
+}
+
 app.use(cors({
-    origin: ['http://localhost:5173','drive.curruptnation.com'], // use your actual domain name (or localhost), using * is not recommended
+    origin: corsorigins, // use your actual domain name (or localhost), using * is not recommended
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Origin', 'X-Requested-With', 'Accept', 'x-client-key', 'x-client-token', 'x-client-secret', 'Authorization'],
     credentials: true
