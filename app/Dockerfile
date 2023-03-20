@@ -3,6 +3,7 @@
 FROM node:19-alpine
 
 ENV VITE_ADDRESS=http://localhost:8060
+ENV VITE_AUTH_ADDRESS=http://localhost:7765
 
 WORKDIR /app
 

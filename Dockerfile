@@ -13,6 +13,6 @@ RUN npm install
 
 COPY *.js ./
 
-EXPOSE 8060
+EXPOSE 8060 7765
 
-CMD ["npm", "run", "start"]
+CMD ["npm", "run", "conc"]
